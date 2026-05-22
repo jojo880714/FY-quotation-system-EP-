@@ -39,7 +39,7 @@ const STEPS=[
   {name:'確認報價',en:'Confirm Quote'},
 ];
 
-let state={step:0,school:null,campus:null,course:null,weeks:4,startDate:'',accomm:null,extras:{},disc:{type:'原價',pct:0,fixed:0,schoolDiscount:null},studentName:'',studentEmail:'',notes:''};
+let state={step:0,school:null,campus:null,course:null,weeks:4,startDate:'',accomm:null,extras:{},disc:{type:'原價',pct:0,fixed:0,schoolDiscount:null},studentName:'',studentEmail:'',notes:'',_rounded:false,_roundedFinal:0};
 let rates=JSON.parse(localStorage.getItem('fy_rates')||'null')||{AUD:21.5,GBP:40.2,EUR:33.8,USD:32.1,CAD:23.5};
 
 // ── Users ──
@@ -60,9 +60,16 @@ function switchUser(uid){
   document.getElementById('user-name-display').textContent=currentUser.name;
   document.getElementById('user-role-display').textContent=(currentUser.role==='admin'?'管理員':'顧問')+'・點擊切換';
   document.getElementById('user-modal').style.display='none';
+  const navSettings=document.getElementById('nav-settings');
+  if(navSettings) navSettings.style.display=currentUser.role==='admin'?'':'none';
+  if(currentUser.role!=='admin'){
+    const ap=document.querySelector('.page.active');
+    if(ap&&ap.id==='page-settings') showPage('wizard');
+  }
   const activePage=document.querySelector('.page.active');
   if(activePage&&activePage.id==='page-history') renderHistory();
   updateBadge();
+  renderQP();
 }
 
 function showUserSwitch(){
@@ -585,10 +592,10 @@ function step6confirm(){
     +'<div class="qp-item-price" style="color:var(--text3)">NT$ '+calc.taxAmt.toLocaleString()+'</div></div>'):'')
     +'</div>'
 
-    +'<div style="background:var(--pink);border-radius:10px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+    +'<div id="final-price-block" style="background:var(--pink);border-radius:10px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
     +'<div><div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.75)">含稅售價 · 給學生</div>'
     +'<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">'+calc.totalOrig+'</div></div>'
-    +'<div style="font-size:26px;font-weight:700;color:#fff">NT$ '+calc.finalTWD.toLocaleString()+'</div>'
+    +'<div style="font-size:26px;font-weight:700;color:#fff" id="final-price-bar">NT$ '+calc.displayFinal.toLocaleString()+'</div>'
     +'</div>'
 
     +'<div class="notice" style="margin-bottom:0">旺季（6–8月）費用已計入。匯率、匯差、獎金、稅率以系統設定為準。報價僅供參考。</div>'
@@ -612,10 +619,26 @@ function step6confirm(){
     +'<div id="download-section" style="display:none;margin-top:8px"></div>'
     +'<div class="step-footer">'
     +'<button class="btn" onclick="prev()">← 上一步</button>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button class="btn" id="btn-round" onclick="doRound()" style="background:#fff8f0;border:1.5px solid #f97316;color:#f97316;font-weight:600">▲ 四捨整數</button>'
     +'<button class="btn btn-pink" id="btn-save-main" onclick="saveAndReveal()">✓ 儲存報價</button>'
+    +'</div>'
     +'</div>';
 }
 
+
+function doRound(){
+  const calc = calculate();
+  const rounded = applyRounding(calc.finalTWD);
+  state._rounded = true;
+  state._roundedFinal = rounded;
+  // 更新畫面上的數字
+  const bar = document.getElementById('final-price-bar');
+  if(bar) bar.textContent = 'NT$ ' + rounded.toLocaleString();
+  const btn = document.getElementById('btn-round');
+  if(btn){ btn.textContent = '✔ 已取整 NT$'+rounded.toLocaleString(); btn.disabled=true; btn.style.opacity='0.6'; }
+  renderQP();
+}
 function saveAndReveal(){
   saveQuote();
   const isAdmin = currentUser && currentUser.role === 'admin';
@@ -660,6 +683,49 @@ function getEffectiveCampusData(school, campus){
   return data;
 }
 
+
+// ── 取整邏輯 ──
+function roundFinal(n){
+  const rem = n % 1000;
+  const base = n - rem;
+  const r500 = rem % 500;
+  const base500 = rem - r500;
+  // 百位以下
+  const under500 = r500; // 0-499
+  let adj = 0;
+  if(under500 <= 500) adj = 0;       // ≤500 歸0（含500本身已是整500）
+  if(under500 > 500) adj = 500;      // 501-999 → +500（不可能>999，r500最大499）
+  // 實際：r500 是 rem%500，所以 r500 ∈ [0,499]
+  // ≤500 → 0，所以整段：rem的百位以下直接捨去
+  // 但題目：≤500→0，501-999→500，≥1000→百位
+  // 等效：對 n 整體做
+  const hundreds = Math.floor(n / 100) * 100; // 先取到百
+  const tail = n % 100;  // 個位+十位
+  // tail ≤ 49 → 捨 → +0
+  // tail ≥ 50 → 進 → +100... 不對，我們要的是對「百位以下的餘數」
+  // 重新理解：
+  // 取 n 的「500以下部分」= n % 500
+  // n % 500 ≤ 0 → 0（即整500）
+  // n % 500 ∈ [1,500] → 視為「不足500」→ 歸0（往下取整500）
+  // 但題目說501-999→500，代表是看整體數字的最後三位(個十百)
+  // 邏輯重寫：
+  const last3 = n % 1000;
+  if(last3 === 0)   return n;
+  if(last3 <= 500)  return n - last3;           // 歸到千位
+  if(last3 <= 999)  return n - last3 + 500;     // 取500
+  return n;
+}
+// 正確版：題目說「500以下歸0，501-999用500」
+// 即：看含稅售價的 %1000 餘數
+// 0       → 不動
+// 1-500   → 去掉尾數，變成整千
+// 501-999 → 取整千+500
+function applyRounding(n){
+  const r = n % 1000;
+  if(r === 0)   return n;
+  if(r <= 500)  return n - r;
+  return n - r + 500;
+}
 // ── Calculate ──
 function calculate(){
   if(!state.school||!state.campus||!state.course)return{items:[],costTWD:0,preTaxSell:0,discountAmt:0,totalDiscount:0,taxAmt:0,finalTWD:0,totalOrig:'',discLines:[],fxBuf:1,commPct:0,rebatePct:0,rebateTWD:0,commissionTWD:0,netProfit:0,netMargin:0,rawCostTWD:0,discountedCostTWD:0,schoolDiscAmt:0};
@@ -680,7 +746,7 @@ function calculate(){
   items.push({name:c.name,note:isWkly?(w+'週 × '+fmt(baseP,cur)+(pkAdd>0?' + 旺季'+fmt(pkAdd,cur)+'/週':'')):'固定費用',amt:cAmt,twd:twd(cAmt,cur),currency:cur,display:fmt(cAmt,cur)});
 
   // Admin (auto)
-  fees.filter(f=>['教材','註冊'].includes(f.category)&&w>=(f.wf||1)&&w<=(f.wt||99)).forEach(f=>{
+  fees.filter(f=>['教材','註冊','銀行'].includes(f.category)&&w>=(f.wf||1)&&w<=(f.wt||99)).forEach(f=>{
     const p=f.price||f.fixed; if(!p)return;
     const isW=f.unit==='每週'||f.unit==='按週計算';
     const a=isW?p*w:p;
@@ -761,7 +827,8 @@ function calculate(){
   const netProfit = afterCoDisc - costTWD + rebateTWD;
   const netMargin = finalTWD > 0 ? Math.round(netProfit / finalTWD * 1000) / 10 : 0;
 
-  return{items, costTWD, preTaxSell, discountAmt, totalDiscount, taxAmt, finalTWD, totalOrig, discLines,
+  const displayFinal = state._rounded ? state._roundedFinal : finalTWD;
+  return{items, costTWD, preTaxSell, discountAmt, totalDiscount, taxAmt, finalTWD, displayFinal, totalOrig, discLines,
     fxBuf, commPct, rawCostTWD, discountedCostTWD, schoolDiscAmt,
     rebatePct, rebateTWD, commissionTWD, netProfit, netMargin};
 }
@@ -826,7 +893,7 @@ function renderQP(){
 
   html+='<div class="qp-total-section">'
     +'<div class="qp-total-label">含稅售價（給學生）</div>'
-    +'<div class="qp-total-amount">NT$ '+calc.finalTWD.toLocaleString()+'</div>'
+    +'<div class="qp-total-amount">NT$ '+calc.displayFinal.toLocaleString()+'</div>'
     +'<div class="qp-total-sub">外幣原價：'+calc.totalOrig+'</div>'
     +'</div>';
   html+='<div style="font-size:10px;color:var(--text3);margin-top:10px;line-height:1.7">'
@@ -861,7 +928,7 @@ function saveQuote(){
     studentName:state.studentName||'未填',studentEmail:state.studentEmail,
     school:state.school,campus:state.campus,course:state.course?.name,weeks:state.weeks,
     startDate:state.startDate,accomm:state.accomm==='none'?null:state.accomm?.name,
-    costTWD:calc.costTWD,preTaxSell:calc.preTaxSell,finalTWD:calc.finalTWD,
+    costTWD:calc.costTWD,preTaxSell:calc.preTaxSell,finalTWD:calc.displayFinal,rawFinalTWD:calc.finalTWD,
     discountAmt:calc.discountAmt,totalOrig:calc.totalOrig,items:calc.items,
     discLines:calc.discLines,netProfit:calc.netProfit,netMargin:calc.netMargin,
     rebateTWD:calc.rebateTWD,schoolDiscAmt:calc.schoolDiscAmt,
@@ -879,7 +946,7 @@ function saveQuote(){
       if(ind){ ind.textContent=ok?'☁️ 已同步':'⚠️ 雲端同步失敗'; ind.style.color=ok?'#059669':'#dc2626'; }
     });
   }
-  alert('✅ 報價已儲存！\n'+q.studentName+' · '+state.school+' '+state.campus+'\nNT$ '+Math.round(calc.finalTWD).toLocaleString());
+  alert('✅ 報價已儲存！\n'+q.studentName+' · '+state.school+' '+state.campus+'\nNT$ '+Math.round(calc.displayFinal).toLocaleString());
 }
 
 function resetWizard(){
@@ -1565,3 +1632,5 @@ function renderDataDetail(){
 // ── Init ──
 renderWizard();renderQP();updateBadge();
 switchUser(currentUser.id);
+// 初始化匯率設定可見性
+document.addEventListener('DOMContentLoaded',function(){const ns=document.getElementById('nav-settings');if(ns)ns.style.display=currentUser.role==='admin'?'':'none';});
