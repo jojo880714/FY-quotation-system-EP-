@@ -1227,6 +1227,7 @@ function confirmOrder(quoteId){
 }
 
 function renderOrderCard(o){
+  window._currentOrder = o;
   const sec = document.getElementById('order-section');
   if(!sec) return;
   sec.innerHTML =
@@ -1285,13 +1286,24 @@ function renderOrderCard(o){
 }
 
 function copyOrderText(btn){
-  const o = window._lastOrder;
-  // 從 DOM 抓文字
-  const el = document.getElementById('order-section');
-  if(!el) return;
-  // 組純文字版
-  const lines = Array.from(el.querySelectorAll('div[style*="font-size:14px"]')).map(e=>e.textContent.trim());
-  navigator.clipboard && navigator.clipboard.writeText(el.innerText).then(()=>{
+  // 從最後一次 renderOrderCard 存的資料組純文字
+  const o = window._currentOrder;
+  if(!o){ alert('找不到開單資料'); return; }
+  const text = [
+    '【開單指示】',
+    '學生姓名：' + o.studentName,
+    '員編：' + o.empId,
+    '',
+    '▎ A 課程（主課）',
+    o.courseZhName + '（' + o.courseEnName + '）',
+    o.weeks + '週 × NT$' + o.aPricePerWeek.toLocaleString() + '/週 ＝ NT$' + o.aTotal.toLocaleString(),
+    '',
+    '▎ B 海外學雜費',
+    'NT$' + o.bTotal.toLocaleString(),
+    '',
+    '⚠️ 整體費用依照實際報價單為主，本開單指示僅供內部作業參考。',
+  ].join('\n');
+  navigator.clipboard && navigator.clipboard.writeText(text).then(()=>{
     btn.textContent='✓ 已複製'; setTimeout(()=>btn.textContent='📋 複製開單內容',2000);
   });
 }
