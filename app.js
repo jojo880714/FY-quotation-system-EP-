@@ -603,7 +603,7 @@ function step6confirm(){
     +(isAdmin?(
     '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:16px 18px;margin-top:12px">'
     +'<div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#059669;margin-bottom:10px">淨利試算（管理員）</div>'
-    +'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dcfce7;font-size:12px"><span style="color:#555">含稅售價</span><span style="font-weight:600">NT$ '+calc.finalTWD.toLocaleString()+'</span></div>'
+    +'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dcfce7;font-size:12px"><span style="color:#555">含稅售價</span><span style="font-weight:600">NT$ '+calc.displayFinal.toLocaleString()+'</span></div>'
     +'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dcfce7;font-size:12px"><span style="color:#555">－ 原始成本（外幣）</span><span style="color:#dc2626;font-weight:500">－NT$ '+calc.rawCostTWD.toLocaleString()+'</span></div>'
     +(calc.schoolDiscAmt>0?'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dcfce7;font-size:12px"><span style="color:#0369a1">＋ 廠商折扣省下</span><span style="color:#0369a1;font-weight:500">＋NT$ '+calc.schoolDiscAmt.toLocaleString()+'</span></div>':'')
     +'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dcfce7;font-size:12px"><span style="color:#555">＋ 預估回傭（'+calc.rebatePct+'%）</span><span style="color:#059669;font-weight:500">＋NT$ '+calc.rebateTWD.toLocaleString()+'</span></div>'
@@ -632,12 +632,11 @@ function doRound(){
   const rounded = applyRounding(calc.finalTWD);
   state._rounded = true;
   state._roundedFinal = rounded;
-  // 更新畫面上的數字
-  const bar = document.getElementById('final-price-bar');
-  if(bar) bar.textContent = 'NT$ ' + rounded.toLocaleString();
+  step6confirm();
+  renderQP();
+  // 重繪後確保按鈕顯示已取整狀態
   const btn = document.getElementById('btn-round');
   if(btn){ btn.textContent = '✔ 已取整 NT$'+rounded.toLocaleString(); btn.disabled=true; btn.style.opacity='0.6'; }
-  renderQP();
 }
 function saveAndReveal(){
   saveQuote();
@@ -728,7 +727,7 @@ function applyRounding(n){
 }
 // ── Calculate ──
 function calculate(){
-  if(!state.school||!state.campus||!state.course)return{items:[],costTWD:0,preTaxSell:0,discountAmt:0,totalDiscount:0,taxAmt:0,finalTWD:0,totalOrig:'',discLines:[],fxBuf:1,commPct:0,rebatePct:0,rebateTWD:0,commissionTWD:0,netProfit:0,netMargin:0,rawCostTWD:0,discountedCostTWD:0,schoolDiscAmt:0};
+  if(!state.school||!state.campus||!state.course)return{items:[],costTWD:0,preTaxSell:0,discountAmt:0,totalDiscount:0,taxAmt:0,finalTWD:0,displayFinal:0,totalOrig:'',discLines:[],fxBuf:1,commPct:0,rebatePct:0,rebateTWD:0,commissionTWD:0,netProfit:0,netMargin:0,rawCostTWD:0,discountedCostTWD:0,schoolDiscAmt:0};
   const campusData=getEffectiveCampusData(state.school,state.campus);
   const fees=campusData?.fees||[];
   const w=state.weeks||4;
@@ -1243,7 +1242,7 @@ function exportPDF(mode='student'){
                     color:rgba(255,255,255,.75);margin-bottom:3px">含稅售價 (Internal)</div>
         <div style="font-size:11px;color:rgba(255,255,255,.65)">≈ ${calc.totalOrig}</div>
       </div>
-      <div style="font-size:28px;font-weight:700;color:#fff">NT$ ${calc.finalTWD.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:700;color:#fff">NT$ ${calc.displayFinal.toLocaleString()}</div>
     </div>` : `
     <div style="background:#e91e8c;border-radius:10px;padding:16px 20px;
                 display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
@@ -1252,7 +1251,7 @@ function exportPDF(mode='student'){
                     color:rgba(255,255,255,.75);margin-bottom:3px">台幣含稅總費用</div>
         <div style="font-size:11px;color:rgba(255,255,255,.65)">實際以匯款日匯率為準</div>
       </div>
-      <div style="font-size:28px;font-weight:700;color:#fff">NT$ ${calc.finalTWD.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:700;color:#fff">NT$ ${calc.displayFinal.toLocaleString()}</div>
     </div>`;
 
   const internalHTML = isInternal ? `
