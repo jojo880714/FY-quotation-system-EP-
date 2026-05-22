@@ -1274,7 +1274,7 @@ function renderOrderCard(o){
 
     // 說明
     +'<div style="background:#fffbf2;border:1px solid #fde68a;border-radius:7px;padding:10px 12px;font-size:11px;color:#92400e;line-height:1.7;margin-bottom:14px">'
-    +'⚠️ 整體費用依照實際報價單為主，本開單指示僅供 ERP 系統登打參考。'
+    +'⚠️ 整體費用依照實際報價單為主，本開單指示僅供內部作業參考。'
     +'</div>'
 
     // 按鈕
