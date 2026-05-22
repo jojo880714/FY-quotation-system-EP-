@@ -109,6 +109,20 @@ function twd(v,cur){return Math.round(v*(rates[cur]||1));}
 function isPeak(){const d=new Date(state.startDate||new Date());const m=d.getMonth();return m>=5&&m<=7;}
 function getTier(tiers,w){for(const t of tiers)if(w>=(t.wf||1)&&w<=(t.wt||99))return t;return tiers[tiers.length-1];}
 
+
+// ── Phase 3：課程名稱對照表（開單用） ──
+const EP_COURSE_MAP = {
+  'Canary Wharf': { zhName: '倫敦客製化遊學',   enName: 'Canary Wharf',  price: 28000 },
+  'Birmingham':   { zhName: '伯明罕客製化遊學',  enName: 'Birmingham',    price: 24500 },
+  'Leeds':        { zhName: '里茲客製化遊學',    enName: 'Leeds',         price: 24500 },
+  'Dublin':       { zhName: '都柏林客製化遊學',  enName: 'Dublin',        price: 23000 },
+  'Berlin':       { zhName: '柏林客製化遊學',    enName: 'Berlin',        price: 16500 },
+  'Paris':        { zhName: '巴黎客製化遊學',    enName: 'Paris',         price: 23500 },
+  'Brisbane':     { zhName: '布里斯本客製化遊學', enName: 'Brisbane',     price: 15000 },
+  'Malta':        { zhName: '馬爾他客製化遊學',  enName: 'Malta',         price: 17000 },
+  'Dubai':        { zhName: '杜拜客製化遊學',    enName: 'Dubai',         price: 18500 },
+  'Toronto':      { zhName: '多倫多客製化遊學',  enName: 'Toronto',       price: 18000 },
+};
 // ── Navigation ──
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -644,20 +658,26 @@ function saveAndReveal(){
   const dl = document.getElementById('download-section');
   if(!dl) return;
   dl.style.display = 'block';
+  // 取得當前報價 id（saveQuote 已 unshift 到 history[0]）
+  const savedId = history[0] ? history[0].id : null;
   dl.innerHTML =
     '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px 18px;margin-bottom:12px">'
     +'<div style="font-size:11px;font-weight:600;color:#15803d;margin-bottom:10px;letter-spacing:.05em">✅ 報價已儲存，請下載報價單</div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
     +(isAdmin?'<button class="btn" id="btn-dl-internal" style="background:#fff">📊 內部報價（PNG）</button>':'')
     +'<button class="btn btn-pink" id="btn-dl-student">📄 學生報價（PNG）</button>'
+    +'<button class="btn" id="btn-open-order" style="background:#fff8f0;border:1.5px solid #f97316;color:#f97316;font-weight:600">📋 產生開單指示</button>'
     +'</div>'
-    +'</div>';
+    +'</div>'
+    +'<div id="order-section" style="display:none"></div>';
   if(isAdmin){
     const bi = document.getElementById('btn-dl-internal');
     if(bi) bi.onclick = function(){ exportPDF('internal'); };
   }
   const bs = document.getElementById('btn-dl-student');
   if(bs) bs.onclick = function(){ exportPDF('student'); };
+  const bo = document.getElementById('btn-open-order');
+  if(bo) bo.onclick = function(){ showOrderInput(savedId); };
   const sb = document.getElementById('btn-save-main');
   if(sb){ sb.textContent='✓ 已儲存'; sb.disabled=true; sb.style.opacity='0.6'; }
 }
@@ -1057,7 +1077,7 @@ function renderHistory(){
       '<div class="td">'+(q.school||'—')+' · '+(q.campus||'—')+'</div>'+
       '<div class="td td-amount">NT$ '+Math.round(q.finalTWD||q.totalTWD||0).toLocaleString()+'</div>'+
       '<div class="td">'+
-        '<span class="status-pill '+(q.status==='draft'?'status-draft':'status-sent')+'">'+(q.status==='draft'?'草稿':'已寄出')+'</span>'+
+        '<span class="status-pill '+(q.status==='ordered'?'status-sent':q.status==='draft'?'status-draft':'status-sent')+'">'+(q.status==='ordered'?'已開單':q.status==='draft'?'草稿':'已寄出')+'</span>'+
         (expired?'<span style="font-size:10px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:1px 6px;margin-left:4px">已過期</span>':'')+
         (isAdmin&&q.advisorName?'<div style="font-size:10px;color:var(--text3);margin-top:1px">'+q.advisorName+'</div>':'')+
       '</div>'+
@@ -1121,6 +1141,160 @@ function copyQ(id){
   setTimeout(()=>toast.remove(),3500);
 }
 
+
+// ── Phase 3：開單指示 ──
+const EMP_ID_RE = /^tkb000\d{4}$/;
+
+function showOrderInput(quoteId){
+  const sec = document.getElementById('order-section');
+  if(!sec) return;
+  sec.style.display = 'block';
+  sec.innerHTML =
+    '<div style="background:#fff8f0;border:1.5px solid #f97316;border-radius:10px;padding:16px 18px;margin-top:4px">'
+    +'<div style="font-size:12px;font-weight:600;color:#ea580c;margin-bottom:12px;letter-spacing:.04em">📋 產生開單指示</div>'
+    +'<div style="font-size:11px;color:#555;margin-bottom:8px">請輸入員編以驗證身份後產生開單資料</div>'
+    +'<div style="display:flex;gap:8px;align-items:center">'
+    +'<input id="emp-id-input" class="form-input" style="max-width:200px;font-family:monospace" '
+    +'placeholder="tkb000xxxx" maxlength="10">'
+    +'<button class="btn btn-pink" onclick="confirmOrder('+quoteId+')">確認開單</button>'
+    +'</div>'
+    +'<div id="emp-id-err" style="font-size:10px;color:#dc2626;margin-top:6px;display:none">員編格式錯誤，請輸入 tkb000 + 4碼數字</div>'
+    +'</div>';
+  setTimeout(()=>{ const inp=document.getElementById('emp-id-input'); if(inp) inp.focus(); },100);
+}
+
+function confirmOrder(quoteId){
+  const inp = document.getElementById('emp-id-input');
+  const err = document.getElementById('emp-id-err');
+  if(!inp) return;
+  const empId = inp.value.trim().toLowerCase();
+  if(!EMP_ID_RE.test(empId)){
+    if(err){ err.style.display='block'; }
+    inp.style.borderColor='#dc2626';
+    return;
+  }
+  if(err) err.style.display='none';
+  inp.style.borderColor='';
+
+  // 取得報價資料
+  const q = history.find(h=>h.id===quoteId);
+  if(!q){ alert('找不到報價資料'); return; }
+
+  const campus = q.campus || state.campus || '';
+  const weeks  = q.weeks  || state.weeks  || 1;
+  const mapEntry = EP_COURSE_MAP[campus] || { zhName: campus+'客製化遊學', enName: campus, price: 0 };
+  const aPricePerWeek = mapEntry.price;
+  const aTotal = aPricePerWeek * weeks;
+  const finalTWD = q.finalTWD || 0;
+  const bTotal = Math.max(0, finalTWD - aTotal);
+
+  // 開單紀錄物件
+  const orderRecord = {
+    orderId: 'ORD-' + Date.now(),
+    quoteId: quoteId,
+    empId: empId,
+    advisorName: currentUser.name,
+    createdAt: new Date().toISOString(),
+    campus: campus,
+    weeks: weeks,
+    courseZhName: mapEntry.zhName,
+    courseEnName: mapEntry.enName,
+    aPricePerWeek: aPricePerWeek,
+    aTotal: aTotal,
+    bTotal: bTotal,
+    finalTWD: finalTWD,
+    studentName: q.studentName || '',
+  };
+
+  // 更新歷史報價狀態
+  const idx = history.findIndex(h=>h.id===quoteId);
+  if(idx>=0){
+    history[idx].status = 'ordered';
+    history[idx].orderId = orderRecord.orderId;
+    history[idx].empId = empId;
+    localStorage.setItem('fy_history', JSON.stringify(history));
+    if(window.fbSaveQuote) window.fbSaveQuote(history[idx]);
+  }
+
+  // Firebase 存開單紀錄
+  if(window._db){
+    const { setDoc, doc } = window._firestore || {};
+    // 用 window.fbSaveOrder（下面在 index.html 加）
+    if(window.fbSaveOrder) window.fbSaveOrder(orderRecord);
+  }
+
+  renderOrderCard(orderRecord);
+}
+
+function renderOrderCard(o){
+  const sec = document.getElementById('order-section');
+  if(!sec) return;
+  sec.innerHTML =
+    '<div style="background:#fff8f0;border:1.5px solid #f97316;border-radius:10px;padding:18px 20px;margin-top:4px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+    +'<div style="font-size:13px;font-weight:700;color:#ea580c">📋 開單指示</div>'
+    +'<div style="font-size:10px;color:#999">'+o.orderId+'</div>'
+    +'</div>'
+
+    // 學生 + 顧問
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'
+    +'<div style="background:#fff;border:1px solid #fed7aa;border-radius:7px;padding:10px 12px">'
+    +'<div style="font-size:9px;color:#f97316;font-weight:700;letter-spacing:.08em;margin-bottom:3px">學生姓名</div>'
+    +'<div style="font-size:13px;font-weight:600">'+o.studentName+'</div>'
+    +'</div>'
+    +'<div style="background:#fff;border:1px solid #fed7aa;border-radius:7px;padding:10px 12px">'
+    +'<div style="font-size:9px;color:#f97316;font-weight:700;letter-spacing:.08em;margin-bottom:3px">員編</div>'
+    +'<div style="font-size:13px;font-weight:600;font-family:monospace">'+o.empId+'</div>'
+    +'</div>'
+    +'</div>'
+
+    // A 課程
+    +'<div style="background:#fff;border:1px solid #fed7aa;border-radius:7px;padding:12px 14px;margin-bottom:8px">'
+    +'<div style="font-size:9px;color:#f97316;font-weight:700;letter-spacing:.08em;margin-bottom:6px">A 課程（主課）</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:baseline">'
+    +'<div>'
+    +'<div style="font-size:14px;font-weight:700">'+o.courseZhName+'</div>'
+    +'<div style="font-size:11px;color:#999;margin-top:2px">'+o.courseEnName+' · '+o.weeks+'週 × NT$'+o.aPricePerWeek.toLocaleString()+'/週</div>'
+    +'</div>'
+    +'<div style="font-size:18px;font-weight:700;color:#ea580c">NT$ '+o.aTotal.toLocaleString()+'</div>'
+    +'</div>'
+    +'</div>'
+
+    // B 海外學雜費
+    +'<div style="background:#fff;border:1px solid #fed7aa;border-radius:7px;padding:12px 14px;margin-bottom:14px">'
+    +'<div style="font-size:9px;color:#f97316;font-weight:700;letter-spacing:.08em;margin-bottom:6px">B 海外學雜費</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:baseline">'
+    +'<div>'
+    +'<div style="font-size:14px;font-weight:700">海外學雜費</div>'
+    +'<div style="font-size:11px;color:#999;margin-top:2px">含稅總額 NT$'+o.finalTWD.toLocaleString()+' － A課程 NT$'+o.aTotal.toLocaleString()+'</div>'
+    +'</div>'
+    +'<div style="font-size:18px;font-weight:700;color:#ea580c">NT$ '+o.bTotal.toLocaleString()+'</div>'
+    +'</div>'
+    +'</div>'
+
+    // 說明
+    +'<div style="background:#fffbf2;border:1px solid #fde68a;border-radius:7px;padding:10px 12px;font-size:11px;color:#92400e;line-height:1.7;margin-bottom:14px">'
+    +'⚠️ 整體費用依照實際報價單為主，本開單指示僅供 ERP 系統登打參考。'
+    +'</div>'
+
+    // 按鈕
+    +'<div style="display:flex;gap:8px">'
+    +'<button class="btn" onclick="copyOrderText(this)" style="background:#fff;border:1.5px solid #f97316;color:#f97316">📋 複製開單內容</button>'
+    +'</div>'
+    +'</div>';
+}
+
+function copyOrderText(btn){
+  const o = window._lastOrder;
+  // 從 DOM 抓文字
+  const el = document.getElementById('order-section');
+  if(!el) return;
+  // 組純文字版
+  const lines = Array.from(el.querySelectorAll('div[style*="font-size:14px"]')).map(e=>e.textContent.trim());
+  navigator.clipboard && navigator.clipboard.writeText(el.innerText).then(()=>{
+    btn.textContent='✓ 已複製'; setTimeout(()=>btn.textContent='📋 複製開單內容',2000);
+  });
+}
 // ── PDF Export ──
 function exportPDF(mode='student'){
   const calc      = calculate();
@@ -1284,7 +1458,19 @@ function exportPDF(mode='student'){
       </div>
     </div>` : '';
 
+  // 有效期限計算
+  const validDays = adminSettings.quoteValidDays || 30;
+  const expireDate = new Date();
+  expireDate.setDate(expireDate.getDate() + validDays);
+  const expireStr = expireDate.toLocaleDateString('zh-TW').replace(/\//g, '/');
+
   const footerHTML = `
+    <div style="background:#fffbf2;border:1px solid #fde68a;border-radius:7px;
+                padding:8px 14px;margin-bottom:12px;font-size:10px;color:#92400e;
+                display:flex;justify-content:space-between;align-items:center">
+      <span>⏳ 本報價單有效期限至 <strong>${expireStr}</strong>（${validDays} 天）</span>
+      <span style="font-size:9px;color:#b45309">逾期請重新報價</span>
+    </div>
     <div style="border-top:1px solid #eee;padding-top:14px;
                 display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
       <div style="font-size:10px;color:#999;line-height:1.9;flex:1">
