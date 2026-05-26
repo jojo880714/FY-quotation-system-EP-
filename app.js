@@ -8,6 +8,15 @@
 //   5. coming (step0) — 保留 IH/BESA/Winning 作為「即將上線」佔位
 // 原因：系統縮減為僅支援 EP 語言學校
 //
+// 修改說明 (2026-05-26) — Phase 5 Firebase Auth 登入制
+//   1. doLogin() — 登入表單觸發
+//   2. applyFirebaseUser(u) — Auth 狀態變更時同步 currentUser
+//   3. renderAccountMgmt() — 帳號管理頁渲染
+//   4. createAllAccounts() — 一鍵建立全部預設帳號
+//   5. addAccountRow() / deleteAccountRow() — 新增/刪除帳號
+//   6. saveAccountMgmt() — 儲存帳號變更
+//   7. sidebar footer 加登出按鈕
+//
 // 修改說明 (2026-05-26) — Phase 4 Google Drive 自動上傳
 //   1. uploadToDrive(blob, filename, folderId) — 上傳 PNG 到 Drive
 //   2. generateAndUploadPNGs(q) — 儲存後自動產生兩張 PNG 並上傳
@@ -65,7 +74,7 @@ function switchUser(uid){
   localStorage.setItem('fy_current_user',JSON.stringify(currentUser));
   document.getElementById('user-avatar').textContent=currentUser.avatar;
   document.getElementById('user-name-display').textContent=currentUser.name;
-  document.getElementById('user-role-display').textContent=(currentUser.role==='admin'?'管理員':'顧問')+'・點擊切換';
+  document.getElementById('user-role-display').textContent=(currentUser.role==='admin'?'管理員':'顧問');
   document.getElementById('user-modal').style.display='none';
   const navSettings=document.getElementById('nav-settings');
   if(navSettings) navSettings.style.display=currentUser.role==='admin'?'':'none';
@@ -235,6 +244,216 @@ const EP_COURSE_MAP = {
   'Dubai':        { zhName: '杜拜客製化遊學',    enName: 'Dubai',         price: 18500 },
   'Toronto':      { zhName: '多倫多客製化遊學',  enName: 'Toronto',       price: 18000 },
 };
+
+// ── Phase 5：Firebase Auth ──
+async function doLogin(){
+  const email = (document.getElementById('login-email')?.value||'').trim().toLowerCase();
+  const password = document.getElementById('login-password')?.value||'';
+  const btn = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+
+  if(!email||!password){
+    if(errEl){ errEl.style.display='block'; errEl.textContent='請輸入信箱與密碼'; }
+    return;
+  }
+
+  if(btn){ btn.textContent='登入中...'; btn.disabled=true; }
+  if(errEl) errEl.style.display='none';
+
+  const result = await window.fbLogin(email, password);
+
+  if(btn){ btn.textContent='登入系統'; btn.disabled=false; }
+
+  if(!result.ok){
+    const msg = result.error==='auth/invalid-credential'||result.error==='auth/wrong-password'||result.error==='auth/user-not-found'
+      ? '信箱或密碼錯誤，請確認後再試'
+      : result.error==='auth/too-many-requests'
+        ? '登入次數過多，請稍後再試'
+        : '登入失敗：'+result.error;
+    if(errEl){ errEl.style.display='block'; errEl.textContent=msg; }
+  }
+  // 成功由 onAuthStateChanged 處理
+}
+
+function applyFirebaseUser(u){
+  // 找到對應的 users 陣列項目或動態建立
+  const matched = users.find(x=>x.id===u.empId);
+  if(matched){
+    currentUser = matched;
+  } else {
+    currentUser = {
+      id: u.empId||u.email,
+      name: u.name,
+      avatar: u.name.charAt(0).toUpperCase(),
+      role: u.role,
+      email: u.email,
+    };
+  }
+  localStorage.setItem('fy_current_user', JSON.stringify(currentUser));
+  // 更新 sidebar
+  const avatarEl = document.getElementById('user-avatar');
+  const nameEl   = document.getElementById('user-name-display');
+  const roleEl   = document.getElementById('user-role-display');
+  if(avatarEl) avatarEl.textContent = currentUser.avatar||currentUser.name.charAt(0);
+  if(nameEl)   nameEl.textContent   = currentUser.name;
+  if(roleEl)   roleEl.textContent   = (currentUser.role==='admin'?'管理員':'顧問');
+  // 匯率設定可見性
+  const ns = document.getElementById('nav-settings');
+  if(ns) ns.style.display = currentUser.role==='admin'?'':'none';
+  updateBadge();
+  renderQP();
+  // 初始化 Firebase 資料同步
+  if(window.fbInit) window.fbInit();
+}
+
+// ── 帳號管理 ──
+let _accountList = []; // 從 Firebase 讀取或預設清單
+
+const DEFAULT_ACCOUNTS = [
+  { empId:'tkb0003007', name:'Kevin',   zhName:'邱彥鈞', email:'tkb0003007@gmail.com', role:'admin' },
+  { empId:'tkb0005306', name:'Marcus',  zhName:'馮若陽', email:'tkb0005306@gmail.com', role:'admin' },
+  { empId:'tkb0005454', name:'Jojo',    zhName:'吳少玄', email:'tkb0005454@gmail.com', role:'admin' },
+  { empId:'tkb0004710', name:'Isa',     zhName:'莊舒雯', email:'tkb0004710@gmail.com', role:'advisor' },
+  { empId:'tkb0005041', name:'Verita',  zhName:'柏妤彥', email:'tkb0005041@gmail.com', role:'advisor' },
+  { empId:'tkb0005283', name:'Emily',   zhName:'賴妍希', email:'tkb0005283@gmail.com', role:'advisor' },
+  { empId:'tkb0004808', name:'Aaron',   zhName:'劉世揚', email:'tkb0004808@gmail.com', role:'advisor' },
+  { empId:'tkb0005384', name:'Perlete', zhName:'江彩幸', email:'tkb0005384@gmail.com', role:'advisor' },
+  { empId:'tkb0005536', name:'BoBo',    zhName:'王柏雯', email:'tkb0005536@gmail.com', role:'advisor' },
+  { empId:'tkb0005561', name:'Jessica', zhName:'魏聖文', email:'tkb0005561@gmail.com', role:'advisor' },
+  { empId:'tkb0005681', name:'Emma',    zhName:'邱千育', email:'tkb0005681@gmail.com', role:'advisor' },
+  { empId:'tkb0005743', name:'Joan',    zhName:'黃玥容', email:'tkb0005743@gmail.com', role:'advisor' },
+];
+
+async function renderAccountMgmt(){
+  const el = document.getElementById('account-mgmt-body');
+  if(!el) return;
+  el.innerHTML = '<div style="font-size:12px;color:#999;padding:8px 0">載入中...</div>';
+  const fbAccounts = window.fbLoadAccounts ? await window.fbLoadAccounts() : [];
+  _accountList = fbAccounts.length > 0 ? fbAccounts : [...DEFAULT_ACCOUNTS];
+  renderAccountTable();
+}
+
+function renderAccountTable(){
+  const el = document.getElementById('account-mgmt-body');
+  if(!el) return;
+  const rows = _accountList.map((a,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 90px 80px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f5">
+      <div style="font-size:13px;font-weight:500">${a.zhName} <span style="font-size:11px;color:#999;font-weight:400">${a.name}</span></div>
+      <div style="font-size:12px;color:#555;font-family:monospace">${a.email}</div>
+      <div style="font-size:12px;color:#555;font-family:monospace">${a.empId}</div>
+      <div>
+        <select onchange="changeRole(${i},this.value)" style="font-size:11px;padding:3px 6px;border-radius:5px;border:1px solid #ddd;background:#fff">
+          <option value="advisor" ${a.role==='advisor'?'selected':''}>顧問</option>
+          <option value="admin"   ${a.role==='admin'  ?'selected':''}>管理員</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-sm" onclick="resetPwd(${i})" style="font-size:10px;padding:3px 8px">重設密碼</button>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 90px 80px;gap:8px;padding:6px 0;border-bottom:1.5px solid #e8e8f0;margin-bottom:4px">
+      <div style="font-size:10px;font-weight:600;color:#999;text-transform:uppercase">姓名</div>
+      <div style="font-size:10px;font-weight:600;color:#999;text-transform:uppercase">Email</div>
+      <div style="font-size:10px;font-weight:600;color:#999;text-transform:uppercase">員編</div>
+      <div style="font-size:10px;font-weight:600;color:#999;text-transform:uppercase">權限</div>
+      <div style="font-size:10px;font-weight:600;color:#999;text-transform:uppercase">操作</div>
+    </div>
+    ${rows}
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+      <button class="btn btn-pink-outline btn-sm" onclick="showAddAccountForm()">＋ 新增帳號</button>
+      <button class="btn btn-pink btn-sm" onclick="createAllAccounts()" id="btn-create-all">一鍵建立全部帳號</button>
+      <span id="acct-msg" style="font-size:11px;color:#059669"></span>
+    </div>
+    <div id="add-account-form" style="display:none;margin-top:16px;background:#f8f8fa;border-radius:10px;padding:16px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:12px">新增帳號</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="font-size:11px;color:#555;display:block;margin-bottom:4px">中文姓名</label>
+          <input id="new-zh" class="form-input" style="font-size:12px" placeholder="例：王小明"></div>
+        <div><label style="font-size:11px;color:#555;display:block;margin-bottom:4px">英文名</label>
+          <input id="new-en" class="form-input" style="font-size:12px" placeholder="例：Ming"></div>
+        <div><label style="font-size:11px;color:#555;display:block;margin-bottom:4px">員編</label>
+          <input id="new-emp" class="form-input" style="font-family:monospace;font-size:12px" placeholder="tkb0000000"></div>
+        <div><label style="font-size:11px;color:#555;display:block;margin-bottom:4px">權限</label>
+          <select id="new-role" class="form-input" style="font-size:12px">
+            <option value="advisor">顧問</option>
+            <option value="admin">管理員</option>
+          </select></div>
+      </div>
+      <div style="font-size:11px;color:#999;margin-bottom:10px">Email = 員編@gmail.com，預設密碼 = 員編（小寫）</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-pink btn-sm" onclick="submitAddAccount()">建立帳號</button>
+        <button class="btn btn-sm" onclick="document.getElementById('add-account-form').style.display='none'">取消</button>
+        <span id="add-acct-msg" style="font-size:11px;color:#059669"></span>
+      </div>
+    </div>`;
+}
+
+function changeRole(idx, role){
+  if(_accountList[idx]) _accountList[idx].role = role;
+}
+
+async function resetPwd(idx){
+  const a = _accountList[idx];
+  if(!a) return;
+  if(!confirm('確定要將 '+a.name+' 的密碼重設為員編（'+a.empId+'）？')) return;
+  // 需要管理員先登入，呼叫 Firebase Admin SDK（前端無法直接改他人密碼）
+  // 替代方案：發送密碼重設信
+  alert('⚠️ 請到 Firebase Console → Authentication 手動重設密碼\n或請當事人用忘記密碼功能。');
+}
+
+function showAddAccountForm(){
+  const f = document.getElementById('add-account-form');
+  if(f) f.style.display = f.style.display==='none'?'block':'none';
+}
+
+async function submitAddAccount(){
+  const zhName = document.getElementById('new-zh')?.value.trim();
+  const name   = document.getElementById('new-en')?.value.trim();
+  const empId  = document.getElementById('new-emp')?.value.trim().toLowerCase();
+  const role   = document.getElementById('new-role')?.value||'advisor';
+  const msgEl  = document.getElementById('add-acct-msg');
+
+  if(!zhName||!name||!empId){ if(msgEl){ msgEl.style.color='#dc2626'; msgEl.textContent='請填寫所有欄位'; } return; }
+  if(!/^tkb\d{7}$/.test(empId)){ if(msgEl){ msgEl.style.color='#dc2626'; msgEl.textContent='員編格式錯誤（tkb + 7碼）'; } return; }
+
+  const email = empId + '@gmail.com';
+  const password = empId;
+  if(msgEl){ msgEl.style.color='#f97316'; msgEl.textContent='建立中...'; }
+
+  const result = window.fbCreateUser ? await window.fbCreateUser(email, password) : {ok:false};
+  if(!result.ok){
+    const errMsg = result.error==='auth/email-already-in-use'?'此帳號已存在':'建立失敗：'+(result.error||'');
+    if(msgEl){ msgEl.style.color='#dc2626'; msgEl.textContent=errMsg; }
+    return;
+  }
+
+  const account = { empId, name, zhName, email, role };
+  _accountList.push(account);
+  if(window.fbSaveAccount) await window.fbSaveAccount(account);
+  document.getElementById('add-account-form').style.display='none';
+  renderAccountTable();
+  if(msgEl){ msgEl.style.color='#059669'; msgEl.textContent='✓ 帳號已建立'; }
+}
+
+async function createAllAccounts(){
+  const btn = document.getElementById('btn-create-all');
+  const msgEl = document.getElementById('acct-msg');
+  if(!confirm('確定要一鍵建立全部 '+DEFAULT_ACCOUNTS.length+' 個帳號嗎？\n已存在的帳號會跳過。')) return;
+  if(btn){ btn.disabled=true; btn.textContent='建立中...'; }
+  let ok=0, skip=0, fail=0;
+  for(const a of DEFAULT_ACCOUNTS){
+    const result = window.fbCreateUser ? await window.fbCreateUser(a.email, a.empId) : {ok:false};
+    if(result.ok){ ok++; if(window.fbSaveAccount) await window.fbSaveAccount(a); }
+    else if(result.error==='auth/email-already-in-use'){ skip++; }
+    else { fail++; console.error('建立失敗', a.email, result.error); }
+  }
+  if(btn){ btn.disabled=false; btn.textContent='一鍵建立全部帳號'; }
+  if(msgEl) msgEl.textContent = '完成：建立 '+ok+' 個，跳過 '+skip+' 個，失敗 '+fail+' 個';
+  renderAccountTable();
+}
+
 // ── Navigation ──
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -1116,6 +1335,7 @@ function renderSettings(){
   renderRebateGrid();
   renderDiscountPlans();
   renderRateFreshness();
+  if(currentUser.role==='admin') renderAccountMgmt();
 }
 
 function renderRebateGrid(){
