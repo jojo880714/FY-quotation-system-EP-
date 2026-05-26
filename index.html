@@ -149,12 +149,16 @@
   });
 
   function showLoginPage(){
+    document.getElementById('auth-loading').style.display = 'none';
     document.getElementById('login-overlay').style.display = 'flex';
     document.getElementById('app-root').style.display = 'none';
   }
   function showAppPage(){
+    document.getElementById('auth-loading').style.display = 'none';
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('app-root').style.display = 'flex';
+    // 登入後才執行 fbInit
+    if(window.fbInit) window.fbInit();
   }
 
   window.fbInit = async function(){
@@ -183,7 +187,7 @@
     }
   };
 
-  window.addEventListener('load', ()=>{ setTimeout(window.fbInit, 500); });
+  // fbInit 改為登入後由 applyFirebaseUser 觸發，不在 load 時自動執行
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>放洋留遊學 · EP 語言學校報價系統</title>
@@ -710,7 +714,15 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 
 
 <!-- ══ Login Overlay ══ -->
-<div id="login-overlay" style="display:flex;position:fixed;inset:0;background:linear-gradient(135deg,#fce4f3 0%,#f8f8fa 100%);z-index:99999;align-items:center;justify-content:center">
+<div id="auth-loading" style="display:flex;position:fixed;inset:0;background:#f8f8fa;z-index:99998;align-items:center;justify-content:center">
+  <div style="text-align:center">
+    <div style="width:44px;height:44px;background:linear-gradient(135deg,#e91e8c,#b01070);border-radius:12px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center">
+      <svg width="22" height="22" fill="#fff" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+    </div>
+    <div style="font-size:13px;color:#9999aa">載入中...</div>
+  </div>
+</div>
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#fce4f3 0%,#f8f8fa 100%);z-index:99999;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:20px;padding:40px 36px;width:360px;box-shadow:0 8px 40px rgba(233,30,140,.15);border:1.5px solid #fce4f3">
     <div style="text-align:center;margin-bottom:28px">
       <div style="width:52px;height:52px;background:linear-gradient(135deg,#e91e8c,#b01070);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
