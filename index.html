@@ -8,6 +8,9 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getFirestore, collection, addDoc, getDocs, doc, setDoc, deleteDoc, onSnapshot, query, orderBy }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+           signOut, onAuthStateChanged, updatePassword, deleteUser, getIdToken }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAJjUX0jHwVA-zpjJ0oHRAIF_0uc3WupY0",
@@ -67,6 +70,92 @@
       return found ? JSON.parse(found.data().value) : null;
     } catch(e){ console.error('fbLoadSettings',e); return null; }
   };
+
+
+  const auth = getAuth(app);
+  window._auth = auth;
+
+  // 帳號角色對照表（email → role + displayName）
+  const ACCOUNT_MAP = {
+    'tkb0003007@gmail.com': { role:'admin',   name:'Kevin',   zhName:'邱彥鈞', empId:'tkb0003007' },
+    'tkb0005306@gmail.com': { role:'admin',   name:'Marcus',  zhName:'馮若陽', empId:'tkb0005306' },
+    'tkb0005454@gmail.com': { role:'admin',   name:'Jojo',    zhName:'吳少玄', empId:'tkb0005454' },
+    'tkb0004710@gmail.com': { role:'advisor', name:'Isa',     zhName:'莊舒雯', empId:'tkb0004710' },
+    'tkb0005041@gmail.com': { role:'advisor', name:'Verita',  zhName:'柏妤彥', empId:'tkb0005041' },
+    'tkb0005283@gmail.com': { role:'advisor', name:'Emily',   zhName:'賴妍希', empId:'tkb0005283' },
+    'tkb0004808@gmail.com': { role:'advisor', name:'Aaron',   zhName:'劉世揚', empId:'tkb0004808' },
+    'tkb0005384@gmail.com': { role:'advisor', name:'Perlete', zhName:'江彩幸', empId:'tkb0005384' },
+    'tkb0005536@gmail.com': { role:'advisor', name:'BoBo',    zhName:'王柏雯', empId:'tkb0005536' },
+    'tkb0005561@gmail.com': { role:'advisor', name:'Jessica', zhName:'魏聖文', empId:'tkb0005561' },
+    'tkb0005681@gmail.com': { role:'advisor', name:'Emma',    zhName:'邱千育', empId:'tkb0005681' },
+    'tkb0005743@gmail.com': { role:'advisor', name:'Joan',    zhName:'黃玥容', empId:'tkb0005743' },
+  };
+  window._accountMap = ACCOUNT_MAP;
+
+  // 登入
+  window.fbLogin = async function(email, password){
+    try{
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      return { ok:true, user: cred.user };
+    } catch(e){
+      return { ok:false, error: e.code };
+    }
+  };
+
+  // 登出
+  window.fbLogout = async function(){
+    await signOut(auth);
+    showLoginPage();
+  };
+
+  // 建立帳號（管理員用）
+  window.fbCreateUser = async function(email, password){
+    try{
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      return { ok:true, uid: cred.user.uid };
+    } catch(e){
+      return { ok:false, error: e.code };
+    }
+  };
+
+  // 儲存帳號資料到 Firestore（accounts collection）
+  window.fbSaveAccount = async function(account){
+    try{
+      await setDoc(doc(db,'accounts', account.empId), account);
+      return true;
+    } catch(e){ return false; }
+  };
+
+  // 讀取帳號清單
+  window.fbLoadAccounts = async function(){
+    try{
+      const snap = await getDocs(collection(db,'accounts'));
+      return snap.docs.map(d=>d.data());
+    } catch(e){ return []; }
+  };
+
+  // Auth 狀態監聽
+  onAuthStateChanged(auth, async (user) => {
+    if(user){
+      const info = ACCOUNT_MAP[user.email] || { role:'advisor', name: user.email, zhName:'', empId:'' };
+      window._currentFirebaseUser = { uid: user.uid, email: user.email, ...info };
+      // 同步到 app.js 的 currentUser
+      if(typeof applyFirebaseUser === 'function') applyFirebaseUser(window._currentFirebaseUser);
+      showAppPage();
+    } else {
+      window._currentFirebaseUser = null;
+      showLoginPage();
+    }
+  });
+
+  function showLoginPage(){
+    document.getElementById('login-overlay').style.display = 'flex';
+    document.getElementById('app-root').style.display = 'none';
+  }
+  function showAppPage(){
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('app-root').style.display = 'flex';
+  }
 
   window.fbInit = async function(){
     try{
@@ -371,7 +460,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 </style>
 </head>
 <body>
-<div class="app">
+<div id="app-root" style="display:none"><div class="app">
 
 <!-- Sidebar -->
 <aside class="sidebar">
@@ -541,6 +630,15 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
           <div class="form-group" style="margin-top:4px"><label class="form-label">報價單底部備註</label><input class="form-input" id="s-note" value="以上報價僅供參考，實際費用依學校公告為準。匯率以報價當日為準。"></div>
           <div style="margin-top:14px"><button class="btn btn-pink" onclick="saveSettings()">儲存設定</button></div>
         </div>
+
+        <!-- 帳號管理（管理員專用）-->
+        <div class="settings-card" id="account-mgmt-card" style="border:1.5px solid #e0e7ff">
+          <div class="settings-card-title">👥 帳號管理</div>
+          <div class="settings-card-sub">新增、刪除帳號及設定權限（管理員專用）</div>
+          <div id="account-mgmt-body">
+            <div style="font-size:12px;color:#999;padding:8px 0">進入頁面後自動載入...</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -609,6 +707,43 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 </div>
 
 </div>
+
+
+<!-- ══ Login Overlay ══ -->
+<div id="login-overlay" style="display:flex;position:fixed;inset:0;background:linear-gradient(135deg,#fce4f3 0%,#f8f8fa 100%);z-index:99999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:20px;padding:40px 36px;width:360px;box-shadow:0 8px 40px rgba(233,30,140,.15);border:1.5px solid #fce4f3">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="width:52px;height:52px;background:linear-gradient(135deg,#e91e8c,#b01070);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+        <svg width="26" height="26" fill="#fff" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+      </div>
+      <div style="font-size:18px;font-weight:700;color:#1a1a2e">放洋留遊學</div>
+      <div style="font-size:12px;color:#9999aa;margin-top:3px">EP 語言學校報價系統</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:600;color:#555;display:block;margin-bottom:5px">員工信箱</label>
+      <input id="login-email" type="email" placeholder="tkb0000000@gmail.com"
+        style="width:100%;padding:10px 12px;border:1.5px solid #ebebf0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;transition:border .15s"
+        onfocus="this.style.borderColor='#e91e8c'" onblur="this.style.borderColor='#ebebf0'"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
+    </div>
+    <div style="margin-bottom:20px">
+      <label style="font-size:11px;font-weight:600;color:#555;display:block;margin-bottom:5px">密碼</label>
+      <input id="login-password" type="password" placeholder="預設為員工編號"
+        style="width:100%;padding:10px 12px;border:1.5px solid #ebebf0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;transition:border .15s"
+        onfocus="this.style.borderColor='#e91e8c'" onblur="this.style.borderColor='#ebebf0'"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="login-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:8px 12px;font-size:12px;color:#dc2626;margin-bottom:14px"></div>
+    <button onclick="doLogin()" id="login-btn"
+      style="width:100%;padding:12px;background:#e91e8c;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s"
+      onmouseover="this.style.background='#c01070'" onmouseout="this.style.background='#e91e8c'">
+      登入系統
+    </button>
+    <div style="text-align:center;margin-top:14px;font-size:11px;color:#9999aa">
+      忘記密碼請聯絡管理員
+    </div>
+  </div>
+</div></div>
 
 <script src="app.js"></script>
 </body>
