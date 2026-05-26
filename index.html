@@ -141,25 +141,24 @@
       window._currentFirebaseUser = { uid: user.uid, email: user.email, ...info };
       // 同步到 app.js 的 currentUser
       if(typeof applyFirebaseUser === 'function') applyFirebaseUser(window._currentFirebaseUser);
-      showAppPage();
+      window.showAppPage();
     } else {
       window._currentFirebaseUser = null;
-      showLoginPage();
+      window.showLoginPage();
     }
   });
 
-  function showLoginPage(){
+  window.showLoginPage = function(){
     document.getElementById('auth-loading').style.display = 'none';
     document.getElementById('login-overlay').style.display = 'flex';
     document.getElementById('app-root').style.display = 'none';
-  }
-  function showAppPage(){
+  };
+  window.showAppPage = function(){
     document.getElementById('auth-loading').style.display = 'none';
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('app-root').style.display = 'flex';
-    // 登入後才執行 fbInit
     if(window.fbInit) window.fbInit();
-  }
+  };
 
   window.fbInit = async function(){
     try{
