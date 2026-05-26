@@ -8,6 +8,13 @@
 //   5. coming (step0) — 保留 IH/BESA/Winning 作為「即將上線」佔位
 // 原因：系統縮減為僅支援 EP 語言學校
 //
+// 修改說明 (2026-05-26) — Phase 4 Google Drive 自動上傳
+//   1. uploadToDrive(blob, filename, folderId) — 上傳 PNG 到 Drive
+//   2. generateAndUploadPNGs(q) — 儲存後自動產生兩張 PNG 並上傳
+//   3. saveAndReveal — 改為儲存後自動觸發 generateAndUploadPNGs
+//   4. 檔案命名：顧問名-學生名-校區-日期-v版本_internal/student.png
+//   5. DRIVE_FOLDER_INTERNAL / DRIVE_FOLDER_STUDENT 常數
+//
 // 修改說明 (2026-05-22) — 住宿資料修正
 // 修改函式/區塊：
 //   1. SCHOOL_DATA accomm — 三類修正（詳見下方）：
@@ -109,6 +116,111 @@ function twd(v,cur){return Math.round(v*(rates[cur]||1));}
 function isPeak(){const d=new Date(state.startDate||new Date());const m=d.getMonth();return m>=5&&m<=7;}
 function getTier(tiers,w){for(const t of tiers)if(w>=(t.wf||1)&&w<=(t.wt||99))return t;return tiers[tiers.length-1];}
 
+
+
+// ── Phase 4：Google Drive 上傳 ──
+const DRIVE_FOLDER_INTERNAL = '1Kh4_bOPT_mF9vwp3CuOJZqId5k_FLGvs';
+const DRIVE_FOLDER_STUDENT  = '1uWT88IMggk6lUXKlZyK2Y-xZ9Iigxxsf';
+
+async function uploadToDrive(blob, filename, folderId){
+  // 使用 Google Drive API v3 multipart upload
+  // 需要 OAuth token（由 gapi 或 Google Identity Services 提供）
+  const token = window._driveToken;
+  if(!token){ console.warn('Drive token 未設定，跳過上傳'); return {ok:false, reason:'no_token'}; }
+
+  const meta = JSON.stringify({ name: filename, parents: [folderId] });
+  const boundary = 'fy_upload_boundary';
+  const body = [
+    '--' + boundary,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    meta,
+    '--' + boundary,
+    'Content-Type: image/png',
+    '',
+  ].join('\r\n');
+
+  const bodyBlob = new Blob(
+    [ body + '\r\n', blob, '\r\n--' + boundary + '--' ],
+    { type: 'multipart/related; boundary=' + boundary }
+  );
+
+  try {
+    const res = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'multipart/related; boundary=' + boundary,
+        },
+        body: bodyBlob,
+      }
+    );
+    const data = await res.json();
+    if(data.id){ return {ok:true, fileId:data.id}; }
+    else { console.error('Drive upload error', data); return {ok:false, reason: data.error?.message||'unknown'}; }
+  } catch(e){
+    console.error('Drive upload exception', e);
+    return {ok:false, reason: e.message};
+  }
+}
+
+function makePngFilename(q, type){
+  // 顧問名-學生名-校區-日期-v版本_type.png
+  const advisor = (q.advisorName||'顧問').replace(/\s/g,'');
+  const student = (q.studentName||'未填').replace(/\s/g,'');
+  const campus  = (q.campus||'').replace(/\s/g,'');
+  const dateStr = (q.date||new Date().toLocaleDateString('zh-TW')).replace(/\//g,'');
+  const version = q.version || 'v1';
+  return `${advisor}-${student}-${campus}-${dateStr}-${version}_${type}.png`;
+}
+
+async function generateAndUploadPNGs(q){
+  const indicator = document.getElementById('sync-indicator');
+  const setStatus = (msg, color) => {
+    if(indicator){ indicator.textContent = msg; indicator.style.color = color||'#6b7280'; }
+  };
+
+  setStatus('📤 上傳報價單...', '#f97316');
+
+  let internalOk = false, studentOk = false;
+  const errors = [];
+
+  // 產生兩張 PNG
+  for(const type of ['internal','student']){
+    try{
+      const blob = await exportPNGBlob(type);
+      if(!blob){ errors.push(type+':無法產生'); continue; }
+      const filename = makePngFilename(q, type);
+      const folderId = type === 'internal' ? DRIVE_FOLDER_INTERNAL : DRIVE_FOLDER_STUDENT;
+      const result = await uploadToDrive(blob, filename, folderId);
+      if(result.ok){
+        if(type==='internal') internalOk = true;
+        else studentOk = true;
+      } else if(result.reason === 'no_token'){
+        // 沒有 token → 靜默跳過，不報錯（Phase 5 Login 完成後會有 token）
+        break;
+      } else {
+        errors.push(type+':'+result.reason);
+      }
+    } catch(e){
+      errors.push(type+':'+e.message);
+    }
+  }
+
+  if(!window._driveToken){
+    setStatus('☁️ 已同步', '#059669');
+    return;
+  }
+
+  if(errors.length === 0){
+    setStatus('☁️ 報價單已上傳 Drive', '#059669');
+  } else {
+    setStatus('⚠️ Drive 上傳部分失敗', '#dc2626');
+    console.error('Drive upload errors:', errors);
+  }
+}
 
 // ── Phase 3：課程名稱對照表（開單用） ──
 const EP_COURSE_MAP = {
@@ -966,6 +1078,8 @@ function saveQuote(){
     });
   }
   alert('✅ 報價已儲存！\n'+q.studentName+' · '+state.school+' '+state.campus+'\nNT$ '+Math.round(calc.displayFinal).toLocaleString());
+  // Phase 4：自動上傳兩張 PNG 到 Drive
+  setTimeout(()=>generateAndUploadPNGs(q), 300);
 }
 
 function resetWizard(){
@@ -1307,13 +1421,30 @@ function copyOrderText(btn){
     btn.textContent='✓ 已複製'; setTimeout(()=>btn.textContent='📋 複製開單內容',2000);
   });
 }
+
+async function exportPNGBlob(type){
+  const isInternal = type === 'internal';
+  const wrap = buildPDFWrap(isInternal);
+  document.body.appendChild(wrap);
+  try {
+    const canvas = await html2canvas(wrap, {
+      scale: 2, useCORS: true, allowTaint: true,
+      backgroundColor: '#ffffff', logging: false, width: 720,
+    });
+    return await new Promise(res => canvas.toBlob(res, 'image/png'));
+  } catch(e){
+    console.error('exportPNGBlob error', e);
+    return null;
+  } finally {
+    if(wrap.parentNode) document.body.removeChild(wrap);
+  }
+}
+
 // ── PDF Export ──
-function exportPDF(mode='student'){
+function buildPDFWrap(isInternal){
   const calc      = calculate();
-  const isInternal = mode === 'internal';
   const pk         = isPeak();
   const ci         = companyInfo;
-  const studentLabel = state.studentName || '報價單';
   const dateStr    = new Date().toLocaleDateString('zh-TW').replace(/\//g,'-');
 
   const wrap = document.createElement('div');
@@ -1499,6 +1630,14 @@ function exportPDF(mode='student'){
     </div>`;
 
   wrap.innerHTML = headerHTML + infoHTML + tableHTML + totalHTML + internalHTML + footerHTML;
+  return wrap;
+}
+
+function exportPDF(mode='student'){
+  const isInternal = mode === 'internal';
+  const wrap = buildPDFWrap(isInternal);
+  const studentLabel = state.studentName || '報價單';
+  const dateStr    = new Date().toLocaleDateString('zh-TW').replace(/\//g,'-');
   document.body.appendChild(wrap);
 
   const filename = (isInternal?'內部報價_':'報價單_') + studentLabel + '_' + dateStr + '.png';
