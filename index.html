@@ -105,7 +105,7 @@
   // 登出
   window.fbLogout = async function(){
     await signOut(auth);
-    showLoginPage();
+    if(window.showLoginPage) window.showLoginPage();
   };
 
   // 建立帳號（管理員用）
@@ -144,9 +144,15 @@
     } else {
       window._currentFirebaseUser = null;
     }
-    window._pendingAuthUser = window._currentFirebaseUser;
-    // 如果 app.js 已載入就直接處理，否則等 app.js 自己來取
-    if(typeof window._authReady === 'function') window._authReady();
+    // 等 app.js 確保載入完成後再處理 UI
+    function tryAuth(){
+      if(typeof window._authReady === 'function'){
+        window._authReady();
+      } else {
+        setTimeout(tryAuth, 50);
+      }
+    }
+    tryAuth();
   });
 
   window.showLoginPage = function(){
