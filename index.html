@@ -134,18 +134,19 @@
     } catch(e){ return []; }
   };
 
-  // Auth 狀態監聽
+  // Auth 狀態監聽：等 app.js 載入後再處理
+  window._pendingAuthUser = undefined; // undefined=尚未收到, null=未登入, object=已登入
+
   onAuthStateChanged(auth, async (user) => {
     if(user){
       const info = ACCOUNT_MAP[user.email] || { role:'advisor', name: user.email, zhName:'', empId:'' };
       window._currentFirebaseUser = { uid: user.uid, email: user.email, ...info };
-      // 同步到 app.js 的 currentUser
-      if(typeof applyFirebaseUser === 'function') applyFirebaseUser(window._currentFirebaseUser);
-      window.showAppPage();
     } else {
       window._currentFirebaseUser = null;
-      window.showLoginPage();
     }
+    window._pendingAuthUser = window._currentFirebaseUser;
+    // 如果 app.js 已載入就直接處理，否則等 app.js 自己來取
+    if(typeof window._authReady === 'function') window._authReady();
   });
 
   window.showLoginPage = function(){
