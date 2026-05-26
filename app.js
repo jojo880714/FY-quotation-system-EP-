@@ -2190,3 +2190,32 @@ renderWizard();renderQP();updateBadge();
 switchUser(currentUser.id);
 // 初始化匯率設定可見性
 document.addEventListener('DOMContentLoaded',function(){const ns=document.getElementById('nav-settings');if(ns)ns.style.display=currentUser.role==='admin'?'':'none';});
+
+// ── Phase 5：Auth 初始化（app.js 載入後） ──
+function handleAuthState(){
+  const u = window._currentFirebaseUser;
+  if(u){
+    applyFirebaseUser(u);
+    if(window.showAppPage) window.showAppPage();
+  } else {
+    if(window.showLoginPage) window.showLoginPage();
+  }
+}
+
+// 掛上 _authReady，讓 index.html 的 onAuthStateChanged 可以呼叫
+window._authReady = function(){
+  // DOM 已就緒才執行
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', handleAuthState);
+  } else {
+    handleAuthState();
+  }
+};
+
+// 如果 onAuthStateChanged 比 app.js 早執行完（_pendingAuthUser 已有值）
+document.addEventListener('DOMContentLoaded', function(){
+  if(window._pendingAuthUser !== undefined){
+    handleAuthState();
+  }
+  // 否則等 onAuthStateChanged 回來後呼叫 _authReady
+});
