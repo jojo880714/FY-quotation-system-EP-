@@ -17,6 +17,12 @@
 //   6. saveAccountMgmt() — 儲存帳號變更
 //   7. sidebar footer 加登出按鈕
 //
+// 修改說明 (2026-05-27) — PIN 碼管理員切換
+//   1. sidebar footer 改為固定顯示「放洋留遊學」，移除姓名
+//   2. logo 區點擊 3 次觸發 PIN 輸入
+//   3. 輸入正確 PIN → 切換管理員模式，匯率設定顯示
+//   4. 管理員模式下再點 3 次 → 退出管理員
+//
 // 修改說明 (2026-05-26) — Phase 4 Google Drive 自動上傳
 //   1. uploadToDrive(blob, filename, folderId) — 上傳 PNG 到 Drive
 //   2. generateAndUploadPNGs(q) — 儲存後自動產生兩張 PNG 並上傳
@@ -74,7 +80,7 @@ function switchUser(uid){
   localStorage.setItem('fy_current_user',JSON.stringify(currentUser));
   document.getElementById('user-avatar').textContent=currentUser.avatar;
   document.getElementById('user-name-display').textContent=currentUser.name;
-  document.getElementById('user-role-display').textContent=(currentUser.role==='admin'?'管理員':'顧問');
+  document.getElementById('user-role-display').textContent=(currentUser.role==='admin'?'管理員':'顧問')+'・點擊切換';
   document.getElementById('user-modal').style.display='none';
   const navSettings=document.getElementById('nav-settings');
   if(navSettings) navSettings.style.display=currentUser.role==='admin'?'':'none';
@@ -231,6 +237,100 @@ async function generateAndUploadPNGs(q){
   }
 }
 
+
+// ── PIN 碼管理員切換 ──
+const ADMIN_PIN = '991234';
+let _pinClickCount = 0;
+let _pinClickTimer = null;
+let _isAdminMode = false;
+
+function handleLogoClick(){
+  _pinClickCount++;
+  clearTimeout(_pinClickTimer);
+  _pinClickTimer = setTimeout(()=>{ _pinClickCount=0; }, 800);
+  if(_pinClickCount >= 3){
+    _pinClickCount = 0;
+    if(_isAdminMode){
+      // 已是管理員 → 退出
+      exitAdminMode();
+    } else {
+      // 顯示 PIN 輸入
+      showPinModal();
+    }
+  }
+}
+
+function showPinModal(){
+  let overlay = document.getElementById('pin-overlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'pin-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:28px 28px 22px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+        <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:4px">管理員驗證</div>
+        <div style="font-size:11px;color:#9999aa;margin-bottom:16px">請輸入 PIN 碼</div>
+        <input id="pin-input" type="password" inputmode="numeric" maxlength="8"
+          style="width:100%;padding:10px 12px;border:1.5px solid #ebebf0;border-radius:8px;font-size:18px;letter-spacing:.2em;text-align:center;font-family:monospace;outline:none"
+          onfocus="this.style.borderColor='#e91e8c'" onblur="this.style.borderColor='#ebebf0'"
+          onkeydown="if(event.key==='Enter')submitPin()">
+        <div id="pin-err" style="font-size:11px;color:#dc2626;min-height:16px;margin-top:6px;text-align:center"></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="submitPin()" style="flex:1;padding:10px;background:#e91e8c;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">確認</button>
+          <button onclick="closePinModal()" style="flex:1;padding:10px;background:#f0f0f5;color:#555;border:none;border-radius:8px;font-size:13px;cursor:pointer">取消</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+  overlay.style.display = 'flex';
+  setTimeout(()=>{ const inp=document.getElementById('pin-input'); if(inp){inp.value='';inp.focus();} },100);
+  document.getElementById('pin-err').textContent='';
+}
+
+function closePinModal(){
+  const o = document.getElementById('pin-overlay');
+  if(o) o.style.display='none';
+}
+
+function submitPin(){
+  const inp = document.getElementById('pin-input');
+  const err = document.getElementById('pin-err');
+  if(!inp) return;
+  if(inp.value === ADMIN_PIN){
+    closePinModal();
+    enterAdminMode();
+  } else {
+    err.textContent = 'PIN 碼錯誤';
+    inp.value='';
+    inp.focus();
+  }
+}
+
+function enterAdminMode(){
+  _isAdminMode = true;
+  currentUser = users.find(u=>u.role==='admin') || users[0];
+  const ns = document.getElementById('nav-settings');
+  if(ns) ns.style.display='';
+  const badge = document.getElementById('admin-badge');
+  if(badge) badge.style.display='inline-block';
+  updateBadge();
+  renderQP();
+}
+
+function exitAdminMode(){
+  _isAdminMode = false;
+  currentUser = users.find(u=>u.role==='advisor') || users[1];
+  const ns = document.getElementById('nav-settings');
+  if(ns) ns.style.display='none';
+  const badge = document.getElementById('admin-badge');
+  if(badge) badge.style.display='none';
+  // 若在管理員頁面，跳回報價
+  const ap = document.querySelector('.page.active');
+  if(ap && ap.id==='page-settings') showPage('wizard');
+  updateBadge();
+  renderQP();
+}
+
 // ── Phase 3：課程名稱對照表（開單用） ──
 const EP_COURSE_MAP = {
   'Canary Wharf': { zhName: '倫敦客製化遊學',   enName: 'Canary Wharf',  price: 28000 },
@@ -245,93 +345,7 @@ const EP_COURSE_MAP = {
   'Toronto':      { zhName: '多倫多客製化遊學',  enName: 'Toronto',       price: 18000 },
 };
 
-// ── Phase 5：Firebase Auth ──
-async function doLogin(){
-  const email = (document.getElementById('login-email')?.value||'').trim().toLowerCase();
-  const password = document.getElementById('login-password')?.value||'';
-  const btn = document.getElementById('login-btn');
-  const errEl = document.getElementById('login-error');
 
-  if(!email||!password){
-    if(errEl){ errEl.style.display='block'; errEl.textContent='請輸入信箱與密碼'; }
-    return;
-  }
-
-  if(btn){ btn.textContent='登入中...'; btn.disabled=true; }
-  if(errEl) errEl.style.display='none';
-
-  const result = await window.fbLogin(email, password);
-
-  if(btn){ btn.textContent='登入系統'; btn.disabled=false; }
-
-  if(!result.ok){
-    const msg = result.error==='auth/invalid-credential'||result.error==='auth/wrong-password'||result.error==='auth/user-not-found'
-      ? '信箱或密碼錯誤，請確認後再試'
-      : result.error==='auth/too-many-requests'
-        ? '登入次數過多，請稍後再試'
-        : '登入失敗：'+result.error;
-    if(errEl){ errEl.style.display='block'; errEl.textContent=msg; }
-  }
-  // 成功由 onAuthStateChanged 處理
-}
-
-function applyFirebaseUser(u){
-  // 找到對應的 users 陣列項目或動態建立
-  const matched = users.find(x=>x.id===u.empId);
-  if(matched){
-    currentUser = matched;
-  } else {
-    currentUser = {
-      id: u.empId||u.email,
-      name: u.name,
-      avatar: u.name.charAt(0).toUpperCase(),
-      role: u.role,
-      email: u.email,
-    };
-  }
-  localStorage.setItem('fy_current_user', JSON.stringify(currentUser));
-  // 更新 sidebar
-  const avatarEl = document.getElementById('user-avatar');
-  const nameEl   = document.getElementById('user-name-display');
-  const roleEl   = document.getElementById('user-role-display');
-  if(avatarEl) avatarEl.textContent = currentUser.avatar||currentUser.name.charAt(0);
-  if(nameEl)   nameEl.textContent   = currentUser.name;
-  if(roleEl)   roleEl.textContent   = (currentUser.role==='admin'?'管理員':'顧問');
-  // 匯率設定可見性
-  const ns = document.getElementById('nav-settings');
-  if(ns) ns.style.display = currentUser.role==='admin'?'':'none';
-  updateBadge();
-  renderQP();
-  // 初始化 Firebase 資料同步
-  if(window.fbInit) window.fbInit();
-}
-
-// ── 帳號管理 ──
-let _accountList = []; // 從 Firebase 讀取或預設清單
-
-const DEFAULT_ACCOUNTS = [
-  { empId:'tkb0003007', name:'Kevin',   zhName:'邱彥鈞', email:'tkb0003007@gmail.com', role:'admin' },
-  { empId:'tkb0005306', name:'Marcus',  zhName:'馮若陽', email:'tkb0005306@gmail.com', role:'admin' },
-  { empId:'tkb0005454', name:'Jojo',    zhName:'吳少玄', email:'tkb0005454@gmail.com', role:'admin' },
-  { empId:'tkb0004710', name:'Isa',     zhName:'莊舒雯', email:'tkb0004710@gmail.com', role:'advisor' },
-  { empId:'tkb0005041', name:'Verita',  zhName:'柏妤彥', email:'tkb0005041@gmail.com', role:'advisor' },
-  { empId:'tkb0005283', name:'Emily',   zhName:'賴妍希', email:'tkb0005283@gmail.com', role:'advisor' },
-  { empId:'tkb0004808', name:'Aaron',   zhName:'劉世揚', email:'tkb0004808@gmail.com', role:'advisor' },
-  { empId:'tkb0005384', name:'Perlete', zhName:'江彩幸', email:'tkb0005384@gmail.com', role:'advisor' },
-  { empId:'tkb0005536', name:'BoBo',    zhName:'王柏雯', email:'tkb0005536@gmail.com', role:'advisor' },
-  { empId:'tkb0005561', name:'Jessica', zhName:'魏聖文', email:'tkb0005561@gmail.com', role:'advisor' },
-  { empId:'tkb0005681', name:'Emma',    zhName:'邱千育', email:'tkb0005681@gmail.com', role:'advisor' },
-  { empId:'tkb0005743', name:'Joan',    zhName:'黃玥容', email:'tkb0005743@gmail.com', role:'advisor' },
-];
-
-async function renderAccountMgmt(){
-  const el = document.getElementById('account-mgmt-body');
-  if(!el) return;
-  el.innerHTML = '<div style="font-size:12px;color:#999;padding:8px 0">載入中...</div>';
-  const fbAccounts = window.fbLoadAccounts ? await window.fbLoadAccounts() : [];
-  _accountList = fbAccounts.length > 0 ? fbAccounts : [...DEFAULT_ACCOUNTS];
-  renderAccountTable();
-}
 
 function renderAccountTable(){
   const el = document.getElementById('account-mgmt-body');
@@ -1335,7 +1349,7 @@ function renderSettings(){
   renderRebateGrid();
   renderDiscountPlans();
   renderRateFreshness();
-  if(currentUser.role==='admin') renderAccountMgmt();
+
 }
 
 function renderRebateGrid(){
@@ -2189,33 +2203,8 @@ function renderDataDetail(){
 renderWizard();renderQP();updateBadge();
 switchUser(currentUser.id);
 // 初始化匯率設定可見性
-document.addEventListener('DOMContentLoaded',function(){const ns=document.getElementById('nav-settings');if(ns)ns.style.display=currentUser.role==='admin'?'':'none';});
-
-// ── Phase 5：Auth 初始化（app.js 載入後） ──
-function handleAuthState(){
-  const u = window._currentFirebaseUser;
-  if(u){
-    applyFirebaseUser(u);
-    if(window.showAppPage) window.showAppPage();
-  } else {
-    if(window.showLoginPage) window.showLoginPage();
-  }
-}
-
-// 掛上 _authReady，讓 index.html 的 onAuthStateChanged 可以呼叫
-window._authReady = function(){
-  // DOM 已就緒才執行
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', handleAuthState);
-  } else {
-    handleAuthState();
-  }
-};
-
-// 如果 onAuthStateChanged 比 app.js 早執行完（_pendingAuthUser 已有值）
-document.addEventListener('DOMContentLoaded', function(){
-  if(window._pendingAuthUser !== undefined){
-    handleAuthState();
-  }
-  // 否則等 onAuthStateChanged 回來後呼叫 _authReady
+document.addEventListener('DOMContentLoaded',function(){
+  // 預設隱藏匯率設定（需 PIN 才能進入管理員模式）
+  const ns=document.getElementById('nav-settings');
+  if(ns) ns.style.display='none';
 });
