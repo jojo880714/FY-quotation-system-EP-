@@ -403,6 +403,10 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
       <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
       匯率設定
     </button>
+    <button class="nav-item" id="nav-tutorial" onclick="startTutorial(true)" style="color:var(--pink)">
+      <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
+      使用教學
+    </button>
     <button class="nav-item" onclick="showPage('data')">
       <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/><path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z"/><path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z"/></svg>
       費用資料管理
@@ -620,6 +624,46 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 
 </div>
 
+
+
+<!-- ══ Tutorial Spotlight ══ -->
+<div id="tutorial-overlay" style="display:none;position:fixed;inset:0;z-index:88888;pointer-events:none">
+  <!-- 遮罩四塊 -->
+  <div id="tut-mask-top"    style="position:absolute;left:0;right:0;top:0;background:rgba(0,0,0,.55);transition:all .3s"></div>
+  <div id="tut-mask-bottom" style="position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);transition:all .3s"></div>
+  <div id="tut-mask-left"   style="position:absolute;top:0;bottom:0;left:0;background:rgba(0,0,0,.55);transition:all .3s"></div>
+  <div id="tut-mask-right"  style="position:absolute;top:0;bottom:0;right:0;background:rgba(0,0,0,.55);transition:all .3s"></div>
+  <!-- highlight 邊框 -->
+  <div id="tut-highlight" style="position:absolute;border:2.5px solid #e91e8c;border-radius:10px;box-shadow:0 0 0 4px rgba(233,30,140,.2);transition:all .3s;pointer-events:none"></div>
+  <!-- tooltip -->
+  <div id="tut-tooltip" style="position:absolute;pointer-events:all;transition:all .3s">
+    <div style="background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:20px 22px;max-width:300px;min-width:240px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:600;color:var(--pink);letter-spacing:.06em" id="tut-step-label">步驟 1 / 9</div>
+        <button onclick="endTutorial()" style="background:none;border:none;cursor:pointer;color:#9999aa;font-size:16px;line-height:1;padding:0">✕</button>
+      </div>
+      <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:6px" id="tut-title"></div>
+      <div style="font-size:12px;color:#555566;line-height:1.7" id="tut-body"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
+        <button id="tut-btn-prev" onclick="tutPrev()" style="background:none;border:1px solid #ddd;border-radius:7px;padding:6px 14px;font-size:12px;cursor:pointer;color:#555">← 上一步</button>
+        <div style="display:flex;gap:4px;align-items:center" id="tut-dots"></div>
+        <button id="tut-btn-next" onclick="tutNext()" style="background:#e91e8c;border:none;border-radius:7px;padding:6px 14px;font-size:12px;cursor:pointer;color:#fff;font-weight:600">下一步 →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Tutorial Panel（側邊說明）══ -->
+<div id="tutorial-panel" style="display:none;position:fixed;top:0;right:0;width:320px;height:100%;background:#fff;border-left:1px solid #ebebf0;z-index:77777;box-shadow:-4px 0 20px rgba(0,0,0,.08);overflow-y:auto">
+  <div style="padding:20px 20px 12px;border-bottom:1px solid #ebebf0;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:1">
+    <div>
+      <div style="font-size:14px;font-weight:700;color:#1a1a2e">📖 使用說明</div>
+      <div style="font-size:11px;color:#9999aa;margin-top:2px">EP 語言學校報價系統</div>
+    </div>
+    <button onclick="toggleTutorialPanel()" style="background:none;border:none;cursor:pointer;color:#9999aa;font-size:18px">✕</button>
+  </div>
+  <div style="padding:16px 20px" id="tutorial-panel-body"></div>
+</div>
 
 <script src="app.js"></script>
 </body>
