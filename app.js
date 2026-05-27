@@ -83,7 +83,7 @@ function switchUser(uid){
   document.getElementById('user-role-display').textContent=(currentUser.role==='admin'?'管理員':'顧問')+'・點擊切換';
   document.getElementById('user-modal').style.display='none';
   const navSettings=document.getElementById('nav-settings');
-  if(navSettings) navSettings.style.display=currentUser.role==='admin'?'':'none';
+  if(navSettings) navSettings.style.display=window._isAdminMode?'':'none';
   if(currentUser.role!=='admin'){
     const ap=document.querySelector('.page.active');
     if(ap&&ap.id==='page-settings') showPage('wizard');
@@ -2201,12 +2201,7 @@ function renderDataDetail(){
 // ── Init ──
 renderWizard();renderQP();updateBadge();
 switchUser(currentUser.id);
-// 初始化匯率設定可見性
-document.addEventListener('DOMContentLoaded',function(){
-  // 預設隱藏匯率設定（需 PIN 才能進入管理員模式）
-  const ns=document.getElementById('nav-settings');
-  if(ns) ns.style.display='none';
-});
+// 初始化匯率設定可見性（由末尾 DOMContentLoaded 統一處理）
 
 // ── Tutorial System ──
 const TUTORIAL_STEPS = [
@@ -2429,11 +2424,17 @@ function showTutorialPanel(){
   panel.style.display = 'block';
 }
 
-// ── 第一次進入自動啟動 ──
+// ── 第一次進入自動啟動（由末尾 DOMContentLoaded 統一處理）──
+
+// ── 統一初始化（DOMContentLoaded）──
 document.addEventListener('DOMContentLoaded', function(){
-  setTimeout(()=>{
+  // 1. 匯率設定預設隱藏
+  const ns = document.getElementById('nav-settings');
+  if(ns) ns.style.display = 'none';
+  // 2. Tutorial 第一次自動啟動
+  setTimeout(function(){
     if(!localStorage.getItem('fy_tutorial_done')){
       startTutorial(false);
     }
-  }, 800);
+  }, 1000);
 });
