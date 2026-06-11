@@ -17,6 +17,13 @@
 //   6. saveAccountMgmt() — 儲存帳號變更
 //   7. sidebar footer 加登出按鈕
 //
+// 修改說明 (2026-06-11) — UX 改造：鎖淨利 / 教學 104 風格 / 旺季地區化
+//   1. 預設身分改顧問（不信任 localStorage 內 admin，重整一律降回顧問）→ 淨利/計費層/回傭僅 PIN 管理員可見
+//   2. 右側報價 QP 的「營業稅」明細列改為僅管理員可見（顧問只看含稅總價）
+//   3. 身分徽章 setModeBadge()：sidebar 顯示「👤 顧問模式 / 🔑 管理員模式」
+//   4. 使用教學改 104 風格：移除自動彈出、改左側「使用教學」點擊觸發、卡片置於高亮下方、加 resize 重新定位、內容更新為 EP/ILSC/EC/Kaplan/SGIC 五廠商與 30+ 校區
+//   5. isPeak() 旺季地區化：開普敦 11–3 月、杜拜 11–2 月、其餘 6–8 月
+//
 // 修改說明 (2026-05-27) — PIN 碼管理員切換
 //   1. sidebar footer 改為固定顯示「放洋留遊學」，移除姓名
 //   2. logo 區點擊 3 次觸發 PIN 輸入
@@ -100,7 +107,12 @@ const DEFAULT_USERS=[
   {id:'u4',name:'Yiwei',role:'advisor',avatar:'Y'},
 ];
 let users=JSON.parse(localStorage.getItem('fy_users')||'null')||DEFAULT_USERS;
-let currentUser=JSON.parse(localStorage.getItem('fy_current_user')||'null')||users[0];
+let currentUser=(function(){
+  // 預設顧問：不信任 localStorage 內的 admin 身分，重整一律降回顧問，淨利需 PIN 才解鎖
+  var saved=JSON.parse(localStorage.getItem('fy_current_user')||'null');
+  if(saved && saved.role!=='admin') return saved;
+  return users.find(u=>u.role==='advisor')||users[0];
+})();
 
 function switchUser(uid){
   currentUser=users.find(u=>u.id===uid)||users[0];
@@ -163,7 +175,13 @@ let companyInfo=JSON.parse(localStorage.getItem('fy_company')||'null')||{company
 function sf(v){try{const f=parseFloat(v);return isNaN(f)?0:f;}catch{return 0;}}
 function fmt(v,cur){return(CUR_SYM[cur]||cur)+Math.round(v).toLocaleString();}
 function twd(v,cur){return Math.round(v*(rates[cur]||1));}
-function isPeak(){const d=new Date(state.startDate||new Date());const m=d.getMonth();return m>=5&&m<=7;}
+function isPeak(){
+  const d=new Date(state.startDate||new Date());const m=d.getMonth();
+  const camp=(state.campus||'');
+  if(camp.indexOf('Cape Town')>=0) return (m>=10||m<=2);  // 開普敦旺季 11–3 月
+  if(camp.indexOf('Dubai')>=0)     return (m>=10||m<=1);  // 杜拜旺季 11–2 月
+  return (m>=5&&m<=7);                                     // 其餘地區 6–8 月
+}
 function getTier(tiers,w){for(const t of tiers)if(w>=(t.wf||1)&&w<=(t.wt||99))return t;return tiers[tiers.length-1];}
 
 
@@ -349,6 +367,7 @@ function enterAdminMode(){
   const badge = document.getElementById('admin-badge');
   if(badge) badge.style.display='inline-block';
   updateBadge();
+  setModeBadge(true);
   renderQP();
 }
 
@@ -363,6 +382,7 @@ function exitAdminMode(){
   const ap = document.querySelector('.page.active');
   if(ap && ap.id==='page-settings') showPage('wizard');
   updateBadge();
+  setModeBadge(false);
   renderQP();
 }
 
@@ -1351,10 +1371,12 @@ function renderQP(){
     });
   }
 
+  if(qpIsAdmin){
   html+='<div class="qp-divider"></div>';
   html+='<div class="qp-row"><div><div class="qp-item-name">營業稅</div>'
     +'<div class="qp-item-note">'+(adminSettings.taxRate||5)+'%</div></div>'
     +'<div style="text-align:right"><div class="qp-item-price" style="color:var(--text)">NT$ '+calc.taxAmt.toLocaleString()+'</div></div></div>';
+  }
 
   html+='<div class="qp-total-section">'
     +'<div class="qp-total-label">含稅售價（給學生）</div>'
@@ -1424,6 +1446,11 @@ function resetWizard(){
 }
 
 function updateBadge(){document.getElementById('history-badge').textContent=history.length;}
+function setModeBadge(isAdmin){
+  // 身分徽章（null-safe）：顧問 / 管理員
+  var el=document.getElementById('user-role-display');
+  if(el) el.textContent = isAdmin ? '🔑 管理員模式' : '👤 顧問模式';
+}
 
 // ── Settings ──
 function renderSettings(){
@@ -2306,6 +2333,7 @@ function renderDataDetail(){
 // ── Init ──
 renderWizard();renderQP();updateBadge();
 switchUser(currentUser.id);
+setModeBadge(_isAdminMode);
 // 初始化匯率設定可見性（由末尾 DOMContentLoaded 統一處理）
 
 // ── Tutorial System(EP → EP / ILSC 多廠商版本) ──
@@ -2313,55 +2341,55 @@ const TUTORIAL_STEPS = [
   {
     target: '.logo-area',
     title: '歡迎使用多廠商報價系統 👋',
-    body: '這是放洋留遊學的多廠商語言學校報價工具,目前支援 EP + ILSC。本教學將帶你了解完整的報價流程,大約需要 2 分鐘。',
+    body: '這是放洋留遊學的多廠商語言學校報價工具，支援 EP、ILSC、EC、Kaplan、SGIC 五家、30+ 城市校區。本教學帶你走一遍報價流程，約 2 分鐘。（淨利、回傭、計費層僅管理員 PIN 模式可見）',
     position: 'right',
   },
   {
     target: '.nav-item.active, button[onclick*="wizard"]',
     title: '從「新增報價」開始',
-    body: '每次要幫學生報價,都從這裡點進去。報價分為 7 個步驟,系統會引導你逐步完成。',
+    body: '每次幫學生報價都從這裡進入。報價共 7 步，系統會引導你逐步完成。',
     position: 'right',
   },
   {
     target: '#step-content',
-    title: 'Step 1–2:選學校與課程',
-    body: '可選擇 EP 或 ILSC 兩家廠商,再選城市校區跟課程類型。EP 有 10 個校區、ILSC 有 10 個校區。選完後右側會即時顯示費用。',
+    title: 'Step 1–2：選學校、校區與課程',
+    body: '先選廠商（EP / ILSC / EC / Kaplan / SGIC），再選城市校區與課程。標示「30+」的校區＝同城市的長期班，住宿與規費沿用母校區。選完右側即時顯示費用。',
     position: 'left',
   },
   {
     target: '#step-content',
-    title: 'Step 3:填寫學生資料',
-    body: '輸入學生姓名、Email 和學習週數。週數會影響住宿的可選項目（部分住宿有最少週數限制）。',
+    title: 'Step 3：填寫學生資料與週數',
+    body: '輸入學生姓名、Email 與學習週數。週數會影響學費級距與住宿可選項（部分住宿有最少入住週數）。',
     position: 'left',
   },
   {
     target: '#step-content',
-    title: 'Step 4:選擇住宿',
-    body: '灰色的住宿選項代表週數不符合最少入住要求。部分住宿有短期價和優惠價兩種,請依學生週數選擇。',
+    title: 'Step 4：選擇住宿',
+    body: '灰色住宿＝不符最少入住週數。SGIC 北約克（North York）沿用多倫多住宿價。旺季加價依校區自動套用（開普敦、杜拜旺季月份與其他地區不同）。',
     position: 'left',
   },
   {
     target: '#step-content',
-    title: 'Step 5–6:加購與折扣',
-    body: '可加購簽證費、考試費等。折扣方案由管理員設定,如有廠商限時優惠可在這裡套用。',
+    title: 'Step 5–6：加購與折扣',
+    body: '可加購簽證費、考試費、接機、保險等。折扣支援「廠商折扣」與「公司折扣」疊加，折扣方案由管理員設定。',
     position: 'left',
   },
   {
     target: '.quote-panel',
     title: '右側即時費用預覽',
-    body: '每個步驟的選擇都會即時更新右側費用,包含課程、住宿、規費的完整明細。數字單位為外幣和台幣兩種顯示。',
+    body: '每個選擇都會即時更新右側明細（課程、住宿、規費），外幣與台幣雙顯示。顧問模式只看到學生端含稅總價；淨利與成本僅管理員可見。',
     position: 'left',
   },
   {
     target: '#step-content',
-    title: 'Step 7:確認報價與開單',
-    body: '確認費用後可按「▲ 四捨整數」讓金額更漂亮,再按「✓ 儲存報價」。儲存後可下載 PNG 報價單,以及產生開單指示。',
+    title: 'Step 7：確認、四捨整數與開單',
+    body: '確認後可按「▲ 四捨整數」讓金額更漂亮，再按「✓ 儲存報價」。可下載學生版 PNG，並產生開單指示（自動拆 A 課程＋B 海外學雜費）。',
     position: 'left',
   },
   {
     target: 'button[onclick*="history"]',
     title: '歷史報價紀錄',
-    body: '所有報價都會存在這裡,支援搜尋和重新載入。已開單的報價會顯示「已開單」標籤,方便追蹤進度。',
+    body: '所有報價都存在這裡，可搜尋、複製、重新載入。已開單的報價會標示「已開單」，方便追蹤。',
     position: 'right',
   },
 ];
@@ -2412,6 +2440,8 @@ function startTutorial(manual = false){
   document.getElementById('tutorial-overlay').style.pointerEvents = 'all';
   renderTutStep();
 }
+// 視窗大小改變時重新定位教學卡片，避免跑位
+if(!window._tutResizeBound){ window._tutResizeBound=true; window.addEventListener('resize',function(){ if(typeof _tutActive!=='undefined' && _tutActive) renderTutStep(); }); }
 
 function endTutorial(){
   _tutActive = false;
@@ -2483,20 +2513,28 @@ function renderTutStep(){
     highlight.style.width  = (rect.width+pad*2)+'px';
     highlight.style.height = (rect.height+pad*2)+'px';
 
-    // tooltip 位置
-    const tipW = 300, tipH = 220;
-    let tipLeft, tipTop;
-    if(step.position === 'right'){
-      tipLeft = rect.right + pad + 16;
-      tipTop  = rect.top + rect.height/2 - tipH/2;
-    } else {
-      tipLeft = rect.left - tipW - pad - 16;
-      tipTop  = rect.top + rect.height/2 - tipH/2;
+    // tooltip 位置（104 風格：卡片置於聚焦區塊「下方」，空間不足則改上方）
+    const tipW = 320, tipH = (tooltip.offsetHeight || 200);
+    let tipLeft = rect.left + rect.width/2 - tipW/2;   // 水平對齊高亮中心
+    let tipTop  = rect.bottom + pad + 14;              // 預設置於下方
+    if(tipTop + tipH > vh - 12){                        // 下方放不下 → 改置於上方
+      tipTop = rect.top - pad - 14 - tipH;
     }
-    tipLeft = Math.max(12, Math.min(tipLeft, vw-tipW-12));
-    tipTop  = Math.max(12, Math.min(tipTop,  vh-tipH-12));
+    tipLeft = Math.max(12, Math.min(tipLeft, vw - tipW - 12));
+    tipTop  = Math.max(12, Math.min(tipTop,  vh - tipH - 12));
     tooltip.style.left = tipLeft+'px';
     tooltip.style.top  = tipTop+'px';
+  } else {
+    // 找不到目標元素：遮罩全暗、隱藏 highlight、卡片置中（null-safe，不破壞流程）
+    const vw2 = window.innerWidth, vh2 = window.innerHeight;
+    document.getElementById('tut-mask-top').style.height = vh2+'px';
+    document.getElementById('tut-mask-bottom').style.height = '0px';
+    document.getElementById('tut-mask-left').style.cssText = 'position:absolute;width:0';
+    document.getElementById('tut-mask-right').style.cssText = 'position:absolute;width:0';
+    highlight.style.width='0'; highlight.style.height='0';
+    const tipW2 = 320, tipH2 = (tooltip.offsetHeight || 200);
+    tooltip.style.left = Math.max(12,(vw2-tipW2)/2)+'px';
+    tooltip.style.top  = Math.max(12,(vh2-tipH2)/2)+'px';
   }
 }
 
@@ -2535,9 +2573,5 @@ document.addEventListener('DOMContentLoaded', function(){
   const ns = document.getElementById('nav-settings');
   if(ns) ns.style.display = 'none';
   // 2. Tutorial 第一次自動啟動
-  setTimeout(function(){
-    if(!localStorage.getItem('fy_tutorial_done')){
-      startTutorial(false);
-    }
-  }, 1000);
+  // （已移除自動彈出：教學改由左側「使用教學」按鈕點擊觸發 startTutorial(true)）
 });
