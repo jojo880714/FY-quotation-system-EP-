@@ -17,6 +17,12 @@
 //   6. saveAccountMgmt() — 儲存帳號變更
 //   7. sidebar footer 加登出按鈕
 //
+// 修改說明 (2026-06-11c) — 教學除錯燈泡 + 移除舊入口
+//   1. 右下角常駐 💡 燈泡（createTutBulb，z-index 疊頂、不依賴 index.html），點擊即啟動教學
+//   2. 移除舊「使用教學」入口（hideOldTutorialEntry：隱藏所有 onclick 含 startTutorial 的元素）
+//   3. 全程 console.log（前綴 [教學]）：點擊→建立 DOM→顯示→渲染每步都有 log，方便看 console 定位
+//   4. tutorial-overlay z-index 提升至最大值 2147483647，避免被其他元素蓋住而「建了卻看不到」
+//
 // 修改說明 (2026-06-11b) — 修復「使用教學」點擊無反應
 //   1. _tutStep / _tutActive 由 let 改 var：消除 TDZ（前面若有錯誤中斷載入，也不會在點擊時丟 Cannot access before initialization）
 //   2. 新增 ensureTutorialDOM()：若 index.html 缺教學遮罩/卡片 DOM，app.js 啟動教學時自行建立（含 inline 樣式，不依賴外部 CSS）
@@ -104,6 +110,16 @@ let state={step:0,school:null,campus:null,course:null,weeks:4,startDate:'',accom
 let rates=JSON.parse(localStorage.getItem('fy_rates')||'null')||{AUD:21.5,GBP:40.2,EUR:33.8,USD:32.1,CAD:23.5};
 
 // ── Users ──
+// === 教學除錯燈泡（最優先載入，獨立於後續初始化，避免被任何錯誤中斷）===
+(function(){
+  function boot(){
+    try{ createTutBulb(); hideOldTutorialEntry(); console.log('[教學] 💡 燈泡與入口初始化完成'); }
+    catch(e){ console.error('[教學] ❌ 燈泡初始化失敗:', e); }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
 const DEFAULT_USERS=[
   {id:'admin',name:'管理員',role:'admin',avatar:'管'},
   {id:'u1',name:'Emily',role:'advisor',avatar:'E'},
@@ -2435,12 +2451,46 @@ const PANEL_SECTIONS = [
 var _tutStep = 0;
 var _tutActive = false;
 
+function tutLog(){ try{ console.log.apply(console, ['[教學]'].concat([].slice.call(arguments))); }catch(e){} }
+
+function createTutBulb(){
+  if(document.getElementById('fy-tut-bulb')) return;          // 已存在不重複建
+  var b=document.createElement('div');
+  b.id='fy-tut-bulb';
+  b.title='使用教學';
+  b.textContent='💡';
+  b.style.cssText='position:fixed;right:24px;bottom:24px;width:52px;height:52px;border-radius:50%;'
+    +'background:linear-gradient(135deg,#ff4fa3,#e91e8c);color:#fff;font-size:24px;line-height:52px;'
+    +'text-align:center;cursor:pointer;z-index:2147483646;box-shadow:0 6px 20px rgba(233,30,140,.45);'
+    +'user-select:none;transition:transform .15s';
+  b.onmouseenter=function(){ b.style.transform='scale(1.08)'; };
+  b.onmouseleave=function(){ b.style.transform='scale(1)'; };
+  b.onclick=function(){
+    tutLog('💡 icon clicked — 點擊事件已觸發');
+    try{ startTutorial(true); tutLog('startTutorial(true) 呼叫完成'); }
+    catch(e){ console.error('[教學] ❌ startTutorial 丟錯:', e); }
+  };
+  document.body.appendChild(b);
+  tutLog('燈泡已建立並 append 到 body（右下角）');
+}
+
+function hideOldTutorialEntry(){
+  // 移除/隱藏舊的「使用教學」入口（任何 onclick 內含 startTutorial 的元素，但保留新燈泡）
+  try{
+    var hit=document.querySelectorAll('[onclick*="startTutorial"]');
+    var cnt=0;
+    hit.forEach(function(el){ if(el.id!=='fy-tut-bulb'){ el.style.display='none'; cnt++; } });
+    tutLog('已隱藏舊教學入口數量:', cnt);
+  }catch(e){ console.error('[教學] ❌ 隱藏舊入口失敗:', e); }
+}
+
 function ensureTutorialDOM(){
   // 若 index.html 沒有教學 DOM，app.js 自行建立（含 inline 樣式，不依賴外部 CSS）
-  if(document.getElementById('tutorial-overlay')) return;
+  if(document.getElementById('tutorial-overlay')){ tutLog('tutorial-overlay 已存在，沿用'); return; }
+  tutLog('ensureTutorialDOM() 開始建立 overlay');
   var ov=document.createElement('div');
   ov.id='tutorial-overlay';
-  ov.style.cssText='display:none;position:fixed;inset:0;z-index:99999;pointer-events:none';
+  ov.style.cssText='display:none;position:fixed;inset:0;z-index:2147483647;pointer-events:none';
   ov.innerHTML=''
     +'<div id="tut-mask-top" style="position:absolute;top:0;left:0;width:100%;background:rgba(0,0,0,.55);pointer-events:auto"></div>'
     +'<div id="tut-mask-bottom" style="position:absolute;bottom:0;left:0;width:100%;background:rgba(0,0,0,.55);pointer-events:auto"></div>'
@@ -2461,16 +2511,19 @@ function ensureTutorialDOM(){
     +'  <div onclick="endTutorial()" style="position:absolute;top:14px;right:16px;font-size:18px;color:#bbb;cursor:pointer;line-height:1">×</div>'
     +'</div>';
   document.body.appendChild(ov);
+  tutLog('tutorial-overlay 已建立並 append 到 body（z-index 疊頂）');
 }
 function startTutorial(manual = false){
+  tutLog('startTutorial 進入, manual =', manual);
   // 手動點擊或第一次進入才啟動
-  if(!manual && localStorage.getItem('fy_tutorial_done')) return;
+  if(!manual && localStorage.getItem('fy_tutorial_done')){ tutLog('已看過教學且非手動 → 略過'); return; }
   ensureTutorialDOM();
   _tutStep = 0;
   _tutActive = true;
-  showPage('wizard');
+  try{ showPage('wizard'); }catch(e){ console.error('[教學] showPage 出錯(不影響教學):', e); }
   var ov=document.getElementById('tutorial-overlay');
-  if(ov){ ov.style.display='block'; ov.style.pointerEvents='all'; }
+  if(ov){ ov.style.display='block'; ov.style.pointerEvents='all'; tutLog('overlay.display 設為 block'); }
+  else { console.error('[教學] ❌ 找不到 tutorial-overlay，無法顯示'); }
   renderTutStep();
 }
 // 視窗大小改變時重新定位教學卡片，避免跑位
