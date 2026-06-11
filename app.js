@@ -17,6 +17,11 @@
 //   6. saveAccountMgmt() — 儲存帳號變更
 //   7. sidebar footer 加登出按鈕
 //
+// 修改說明 (2026-06-11b) — 修復「使用教學」點擊無反應
+//   1. _tutStep / _tutActive 由 let 改 var：消除 TDZ（前面若有錯誤中斷載入，也不會在點擊時丟 Cannot access before initialization）
+//   2. 新增 ensureTutorialDOM()：若 index.html 缺教學遮罩/卡片 DOM，app.js 啟動教學時自行建立（含 inline 樣式，不依賴外部 CSS）
+//   3. startTutorial / renderTutStep / endTutorial 全面 null-safe，缺元素不再整段崩潰
+//
 // 修改說明 (2026-06-11) — UX 改造：鎖淨利 / 教學 104 風格 / 旺季地區化
 //   1. 預設身分改顧問（不信任 localStorage 內 admin，重整一律降回顧問）→ 淨利/計費層/回傭僅 PIN 管理員可見
 //   2. 右側報價 QP 的「營業稅」明細列改為僅管理員可見（顧問只看含稅總價）
@@ -2427,17 +2432,45 @@ const PANEL_SECTIONS = [
   },
 ];
 
-let _tutStep = 0;
-let _tutActive = false;
+var _tutStep = 0;
+var _tutActive = false;
 
+function ensureTutorialDOM(){
+  // 若 index.html 沒有教學 DOM，app.js 自行建立（含 inline 樣式，不依賴外部 CSS）
+  if(document.getElementById('tutorial-overlay')) return;
+  var ov=document.createElement('div');
+  ov.id='tutorial-overlay';
+  ov.style.cssText='display:none;position:fixed;inset:0;z-index:99999;pointer-events:none';
+  ov.innerHTML=''
+    +'<div id="tut-mask-top" style="position:absolute;top:0;left:0;width:100%;background:rgba(0,0,0,.55);pointer-events:auto"></div>'
+    +'<div id="tut-mask-bottom" style="position:absolute;bottom:0;left:0;width:100%;background:rgba(0,0,0,.55);pointer-events:auto"></div>'
+    +'<div id="tut-mask-left" style="position:absolute;width:0;pointer-events:auto"></div>'
+    +'<div id="tut-mask-right" style="position:absolute;width:0;pointer-events:auto"></div>'
+    +'<div id="tut-highlight" style="position:absolute;border-radius:12px;box-shadow:0 0 0 3px #e91e8c;pointer-events:none;transition:all .25s"></div>'
+    +'<div id="tut-tooltip" style="position:absolute;width:320px;max-width:90vw;background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:20px;pointer-events:auto;transition:left .2s,top .2s;font-family:inherit">'
+    +'  <div id="tut-step-label" style="font-size:12px;color:#e91e8c;font-weight:700;margin-bottom:6px"></div>'
+    +'  <div id="tut-title" style="font-size:17px;font-weight:800;color:#1a1a2e;margin-bottom:8px"></div>'
+    +'  <div id="tut-body" style="font-size:13px;line-height:1.7;color:#555;margin-bottom:16px"></div>'
+    +'  <div style="display:flex;align-items:center;justify-content:space-between">'
+    +'    <div id="tut-dots" style="display:flex;gap:5px;align-items:center"></div>'
+    +'    <div style="display:flex;gap:8px">'
+    +'      <button id="tut-btn-prev" onclick="tutPrev()" style="border:1px solid #e3e3ee;background:#fff;color:#888;border-radius:20px;padding:7px 14px;font-size:13px;cursor:pointer">上一步</button>'
+    +'      <button id="tut-btn-next" onclick="tutNext()" style="border:none;background:#e91e8c;color:#fff;border-radius:20px;padding:7px 18px;font-size:13px;font-weight:700;cursor:pointer">下一步 →</button>'
+    +'    </div>'
+    +'  </div>'
+    +'  <div onclick="endTutorial()" style="position:absolute;top:14px;right:16px;font-size:18px;color:#bbb;cursor:pointer;line-height:1">×</div>'
+    +'</div>';
+  document.body.appendChild(ov);
+}
 function startTutorial(manual = false){
   // 手動點擊或第一次進入才啟動
   if(!manual && localStorage.getItem('fy_tutorial_done')) return;
+  ensureTutorialDOM();
   _tutStep = 0;
   _tutActive = true;
   showPage('wizard');
-  document.getElementById('tutorial-overlay').style.display = 'block';
-  document.getElementById('tutorial-overlay').style.pointerEvents = 'all';
+  var ov=document.getElementById('tutorial-overlay');
+  if(ov){ ov.style.display='block'; ov.style.pointerEvents='all'; }
   renderTutStep();
 }
 // 視窗大小改變時重新定位教學卡片，避免跑位
@@ -2445,10 +2478,9 @@ if(!window._tutResizeBound){ window._tutResizeBound=true; window.addEventListene
 
 function endTutorial(){
   _tutActive = false;
-  document.getElementById('tutorial-overlay').style.display = 'none';
+  var ov=document.getElementById('tutorial-overlay');
+  if(ov) ov.style.display = 'none';
   localStorage.setItem('fy_tutorial_done', '1');
-  // 同時開啟側邊說明面板
-  showTutorialPanel();
 }
 
 function tutNext(){
@@ -2468,26 +2500,28 @@ function tutPrev(){
 }
 
 function renderTutStep(){
+  ensureTutorialDOM();
+  if(!document.getElementById('tutorial-overlay')) return;
   const step = TUTORIAL_STEPS[_tutStep];
   const total = TUTORIAL_STEPS.length;
 
-  // 更新文字
-  document.getElementById('tut-step-label').textContent = '步驟 ' + (_tutStep+1) + ' / ' + total;
-  document.getElementById('tut-title').textContent = step.title;
-  document.getElementById('tut-body').textContent = step.body;
+  // 更新文字（null-safe）
+  var _set=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
+  _set('tut-step-label','步驟 ' + (_tutStep+1) + ' / ' + total);
+  _set('tut-title',step.title);
+  _set('tut-body',step.body);
 
   // dots
   const dots = document.getElementById('tut-dots');
-  dots.innerHTML = TUTORIAL_STEPS.map((_,i) =>
+  if(dots) dots.innerHTML = TUTORIAL_STEPS.map((_,i) =>
     `<div style="width:${i===_tutStep?16:6}px;height:6px;border-radius:3px;background:${i===_tutStep?'#e91e8c':'#ddd'};transition:all .3s"></div>`
   ).join('');
 
   // 按鈕
   const prev = document.getElementById('tut-btn-prev');
   const next = document.getElementById('tut-btn-next');
-  prev.style.opacity = _tutStep === 0 ? '0.3' : '1';
-  prev.style.pointerEvents = _tutStep === 0 ? 'none' : 'all';
-  next.textContent = _tutStep === total-1 ? '完成 ✓' : '下一步 →';
+  if(prev){ prev.style.opacity = _tutStep === 0 ? '0.3' : '1'; prev.style.pointerEvents = _tutStep === 0 ? 'none' : 'all'; }
+  if(next){ next.textContent = _tutStep === total-1 ? '完成 ✓' : '下一步 →'; }
 
   // highlight 目標元素
   const el = document.querySelector(step.target);
