@@ -1,5 +1,7 @@
 # FY Quotation System
 > 放洋留遊學 × 多廠商語言學校報價系統
+
+| 2026-06-10 | 新增 EC(25校區)、Kaplan(22校區)、SGIC(3校區)三家上架;SCHOOL_DATA / COUNTRY_MAP / COURSE_MAP / rebates / schools 全面擴充為五廠商 |
 ---
 ## 專案概覽
 為放洋語言學校產品線設計的線上報價工具,支援多廠商、多校區的客製化遊學報價。
@@ -71,6 +73,20 @@
 | 加拿大 | Montréal / Toronto / Vancouver | CAD | NT$17,500 |
 | 愛爾蘭 | Dublin | EUR | NT$23,000 |
 | 印度 | New Delhi | USD | NT$18,000 |
+
+### EC 語言學校（25 校區，各校區獨立定價）
+美國(波士頓/紐約/舊金山/聖地牙哥/洛杉磯)、加拿大(蒙特婁/多倫多/溫哥華)、
+英國(倫敦/劍橋/布萊頓/布里斯托/曼徹斯特)、愛爾蘭(都柏林)、馬爾他、南非(開普敦)、杜拜。
+含 30+ 校區(住宿/雜費沿用母城市,由 getEffectiveCampusData 自動 fallback)。
+
+### Kaplan 語言學校（22 校區，各校區獨立定價）
+北美(波士頓/芝加哥/洛杉磯/紐約/舊金山/聖塔芭芭拉/多倫多/溫哥華)、
+英國(倫敦/牛津/劍橋/曼徹斯特/利物浦/愛丁堡/伯恩茅斯/托基)、愛爾蘭(都柏林)。
+全課程(General/Semi-Intensive/Intensive/Business/TOEFL)+ 全住宿 + 全雜費。
+
+### SGIC 語言學校（3 校區，加拿大）
+多倫多 / 溫哥華 / North York(住宿用多倫多價)。三種英語課:
+Intensive English(30堂)/ Full Time(40堂)/ X-Intensive(40堂+1:1)。
 
 主推 SKU:FT AM 上午全職課程(24 lessons)+ Homestay Half board Single(住宿取地區內最低)。
 
