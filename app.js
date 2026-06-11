@@ -17,6 +17,12 @@
 //   6. saveAccountMgmt() — 儲存帳號變更
 //   7. sidebar footer 加登出按鈕
 //
+// 修改說明 (2026-06-11e) — 修破圖 + 顧問模式隱藏匯率設定
+//   1. switchUser 全面 null-safe（缺 user-avatar 等 id 不再 throw）→ 初始化能跑完 → 匯率設定正常隱藏、身分徽章正常更新
+//   2. 燈泡 bootstrap 加早期保險：非管理員一律先隱藏 nav-settings（匯率設定）
+//   3. 教學第 1 步改置中、不挖洞（step.center=true）；其餘步驟才挖洞高亮
+//   4. 教學卡片按鈕「上一步/下一步」加 white-space:nowrap + minWidth，不再換行；進度點容器設 flex 排整齊
+//
 // 修改說明 (2026-06-11d) — 修復「下一步」無反應 + 精簡步驟文字
 //   1. TUTORIAL_STEPS 由中段 const 搬到檔案最上方並改 var：根治 'Cannot access TUTORIAL_STEPS before initialization' 的 TDZ（載入若中途中斷，也已先定義好）
 //   2. 9 步教學文字精簡，每步聚焦「這步在教什麼、看畫面哪裡」
@@ -116,7 +122,7 @@ let rates=JSON.parse(localStorage.getItem('fy_rates')||'null')||{AUD:21.5,GBP:40
 // ── Users ──
 // === 教學步驟（前置 + var，根治 TDZ：載入若中斷也已定義，點擊教學一定存取得到）===
 var TUTORIAL_STEPS = [
-  { target: '.logo-area',
+  { target: '.logo-area', center: true,
     title: '歡迎 👋',
     body: '這套工具幫你快速報價五家語校（EP / ILSC / EC / Kaplan / SGIC）。跟著 9 步走一遍報價流程。',
     position: 'right' },
@@ -157,7 +163,12 @@ var TUTORIAL_STEPS = [
 // === 教學除錯燈泡（最優先載入，獨立於後續初始化，避免被任何錯誤中斷）===
 (function(){
   function boot(){
-    try{ createTutBulb(); hideOldTutorialEntry(); console.log('[教學] 💡 燈泡與入口初始化完成'); }
+    try{
+      createTutBulb(); hideOldTutorialEntry();
+      // 早期保險：預設（非 PIN 管理員）一律隱藏匯率設定，避免 init 中斷時露出
+      if(!window._isAdminMode){ var _ns=document.getElementById('nav-settings'); if(_ns) _ns.style.display='none'; }
+      console.log('[教學] 💡 燈泡與入口初始化完成');
+    }
     catch(e){ console.error('[教學] ❌ 燈泡初始化失敗:', e); }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
@@ -182,10 +193,10 @@ let currentUser=(function(){
 function switchUser(uid){
   currentUser=users.find(u=>u.id===uid)||users[0];
   localStorage.setItem('fy_current_user',JSON.stringify(currentUser));
-  document.getElementById('user-avatar').textContent=currentUser.avatar;
-  document.getElementById('user-name-display').textContent=currentUser.name;
-  document.getElementById('user-role-display').textContent=(currentUser.role==='admin'?'管理員':'顧問')+'・點擊切換';
-  document.getElementById('user-modal').style.display='none';
+  var _av=document.getElementById('user-avatar'); if(_av) _av.textContent=currentUser.avatar;
+  var _nm=document.getElementById('user-name-display'); if(_nm) _nm.textContent=currentUser.name;
+  var _rl=document.getElementById('user-role-display'); if(_rl) _rl.textContent=(currentUser.role==='admin'?'管理員':'顧問')+'・點擊切換';
+  var _um=document.getElementById('user-modal'); if(_um) _um.style.display='none';
   const navSettings=document.getElementById('nav-settings');
   if(navSettings) navSettings.style.display=window._isAdminMode?'':'none';
   if(currentUser.role!=='admin'){
@@ -2555,6 +2566,7 @@ function renderTutStep(){
 
   // dots
   const dots = document.getElementById('tut-dots');
+  if(dots){ dots.style.display='flex'; dots.style.gap='5px'; dots.style.alignItems='center'; }
   if(dots) dots.innerHTML = TUTORIAL_STEPS.map((_,i) =>
     `<div style="width:${i===_tutStep?16:6}px;height:6px;border-radius:3px;background:${i===_tutStep?'#e91e8c':'#ddd'};transition:all .3s"></div>`
   ).join('');
@@ -2562,11 +2574,13 @@ function renderTutStep(){
   // 按鈕
   const prev = document.getElementById('tut-btn-prev');
   const next = document.getElementById('tut-btn-next');
-  if(prev){ prev.style.opacity = _tutStep === 0 ? '0.3' : '1'; prev.style.pointerEvents = _tutStep === 0 ? 'none' : 'all'; }
-  if(next){ next.textContent = _tutStep === total-1 ? '完成 ✓' : '下一步 →'; }
+  if(prev){ prev.style.opacity = _tutStep === 0 ? '0.3' : '1'; prev.style.pointerEvents = _tutStep === 0 ? 'none' : 'all';
+            prev.style.whiteSpace='nowrap'; prev.style.minWidth='72px'; prev.style.padding='8px 14px'; prev.style.fontSize='13px'; }
+  if(next){ next.textContent = _tutStep === total-1 ? '完成 ✓' : '下一步 →';
+            next.style.whiteSpace='nowrap'; next.style.minWidth='88px'; next.style.padding='8px 16px'; next.style.fontSize='13px'; }
 
   // highlight 目標元素
-  const el = document.querySelector(step.target);
+  const el = step.center ? null : document.querySelector(step.target);  // center=true → 不挖洞、卡片置中
   const overlay = document.getElementById('tutorial-overlay');
   const highlight = document.getElementById('tut-highlight');
   const tooltip = document.getElementById('tut-tooltip');
