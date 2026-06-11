@@ -17,6 +17,10 @@
 //   6. saveAccountMgmt() — 儲存帳號變更
 //   7. sidebar footer 加登出按鈕
 //
+// 修改說明 (2026-06-11d) — 修復「下一步」無反應 + 精簡步驟文字
+//   1. TUTORIAL_STEPS 由中段 const 搬到檔案最上方並改 var：根治 'Cannot access TUTORIAL_STEPS before initialization' 的 TDZ（載入若中途中斷，也已先定義好）
+//   2. 9 步教學文字精簡，每步聚焦「這步在教什麼、看畫面哪裡」
+//
 // 修改說明 (2026-06-11c) — 教學除錯燈泡 + 移除舊入口
 //   1. 右下角常駐 💡 燈泡（createTutBulb，z-index 疊頂、不依賴 index.html），點擊即啟動教學
 //   2. 移除舊「使用教學」入口（hideOldTutorialEntry：隱藏所有 onclick 含 startTutorial 的元素）
@@ -110,6 +114,46 @@ let state={step:0,school:null,campus:null,course:null,weeks:4,startDate:'',accom
 let rates=JSON.parse(localStorage.getItem('fy_rates')||'null')||{AUD:21.5,GBP:40.2,EUR:33.8,USD:32.1,CAD:23.5};
 
 // ── Users ──
+// === 教學步驟（前置 + var，根治 TDZ：載入若中斷也已定義，點擊教學一定存取得到）===
+var TUTORIAL_STEPS = [
+  { target: '.logo-area',
+    title: '歡迎 👋',
+    body: '這套工具幫你快速報價五家語校（EP / ILSC / EC / Kaplan / SGIC）。跟著 9 步走一遍報價流程。',
+    position: 'right' },
+  { target: '.nav-item.active, button[onclick*="wizard"]',
+    title: '從「新增報價」開始',
+    body: '看左側選單——每次報價都從這裡進入，右邊會出現 7 個步驟。',
+    position: 'right' },
+  { target: '#step-content',
+    title: '選學校與校區',
+    body: '先點一家語校，再選城市校區與課程。標「30+」是同城市長期班，住宿沿用母校區。',
+    position: 'left' },
+  { target: '#step-content',
+    title: '填週數與學生資料',
+    body: '輸入學生姓名與學習週數。週數會決定學費級距，也影響可選的住宿。',
+    position: 'left' },
+  { target: '#step-content',
+    title: '選住宿',
+    body: '灰色＝週數不夠不能選。旺季加價依校區自動計算（開普敦、杜拜旺季月份不同）。',
+    position: 'left' },
+  { target: '#step-content',
+    title: '加購與折扣',
+    body: '可加簽證、考試、接機、保險。折扣分「廠商折扣」與「公司折扣」，可疊加。',
+    position: 'left' },
+  { target: '.quote-panel',
+    title: '看右側即時費用',
+    body: '每個選擇都即時更新右邊明細。顧問只看含稅總價；淨利與成本需管理員 PIN 才可見。',
+    position: 'left' },
+  { target: '#step-content',
+    title: '確認與開單',
+    body: '按「四捨整數」後儲存報價，可下載學生版 PNG，並產生開單指示（自動拆 A 課程＋B 海外學雜費）。',
+    position: 'left' },
+  { target: 'button[onclick*="history"]',
+    title: '歷史紀錄',
+    body: '所有報價存在「歷史報價紀錄」，可搜尋、複製、重新載入，已開單會標記。',
+    position: 'right' },
+];
+
 // === 教學除錯燈泡（最優先載入，獨立於後續初始化，避免被任何錯誤中斷）===
 (function(){
   function boot(){
@@ -2358,62 +2402,7 @@ setModeBadge(_isAdminMode);
 // 初始化匯率設定可見性（由末尾 DOMContentLoaded 統一處理）
 
 // ── Tutorial System(EP → EP / ILSC 多廠商版本) ──
-const TUTORIAL_STEPS = [
-  {
-    target: '.logo-area',
-    title: '歡迎使用多廠商報價系統 👋',
-    body: '這是放洋留遊學的多廠商語言學校報價工具，支援 EP、ILSC、EC、Kaplan、SGIC 五家、30+ 城市校區。本教學帶你走一遍報價流程，約 2 分鐘。（淨利、回傭、計費層僅管理員 PIN 模式可見）',
-    position: 'right',
-  },
-  {
-    target: '.nav-item.active, button[onclick*="wizard"]',
-    title: '從「新增報價」開始',
-    body: '每次幫學生報價都從這裡進入。報價共 7 步，系統會引導你逐步完成。',
-    position: 'right',
-  },
-  {
-    target: '#step-content',
-    title: 'Step 1–2：選學校、校區與課程',
-    body: '先選廠商（EP / ILSC / EC / Kaplan / SGIC），再選城市校區與課程。標示「30+」的校區＝同城市的長期班，住宿與規費沿用母校區。選完右側即時顯示費用。',
-    position: 'left',
-  },
-  {
-    target: '#step-content',
-    title: 'Step 3：填寫學生資料與週數',
-    body: '輸入學生姓名、Email 與學習週數。週數會影響學費級距與住宿可選項（部分住宿有最少入住週數）。',
-    position: 'left',
-  },
-  {
-    target: '#step-content',
-    title: 'Step 4：選擇住宿',
-    body: '灰色住宿＝不符最少入住週數。SGIC 北約克（North York）沿用多倫多住宿價。旺季加價依校區自動套用（開普敦、杜拜旺季月份與其他地區不同）。',
-    position: 'left',
-  },
-  {
-    target: '#step-content',
-    title: 'Step 5–6：加購與折扣',
-    body: '可加購簽證費、考試費、接機、保險等。折扣支援「廠商折扣」與「公司折扣」疊加，折扣方案由管理員設定。',
-    position: 'left',
-  },
-  {
-    target: '.quote-panel',
-    title: '右側即時費用預覽',
-    body: '每個選擇都會即時更新右側明細（課程、住宿、規費），外幣與台幣雙顯示。顧問模式只看到學生端含稅總價；淨利與成本僅管理員可見。',
-    position: 'left',
-  },
-  {
-    target: '#step-content',
-    title: 'Step 7：確認、四捨整數與開單',
-    body: '確認後可按「▲ 四捨整數」讓金額更漂亮，再按「✓ 儲存報價」。可下載學生版 PNG，並產生開單指示（自動拆 A 課程＋B 海外學雜費）。',
-    position: 'left',
-  },
-  {
-    target: 'button[onclick*="history"]',
-    title: '歷史報價紀錄',
-    body: '所有報價都存在這裡，可搜尋、複製、重新載入。已開單的報價會標示「已開單」，方便追蹤。',
-    position: 'right',
-  },
-];
+// （TUTORIAL_STEPS 已前置到檔案最上方，改 var 以根治 TDZ）
 
 const PANEL_SECTIONS = [
   {
