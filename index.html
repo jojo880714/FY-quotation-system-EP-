@@ -617,7 +617,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 
     <!-- ══ 數據分析頁 ══ -->
     <div class="page" id="page-analytics">
-      <div style="padding:28px 24px;overflow-y:auto;height:100%;box-sizing:border-box">
+      <div style="padding:24px 28px;overflow-y:auto;height:100%;box-sizing:border-box">
 
         <!-- Header -->
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
@@ -629,48 +629,60 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
           <button class="btn" onclick="renderAnalytics()" style="font-size:12px;padding:7px 14px">🔄 重新整理</button>
         </div>
 
-        <!-- Summary cards -->
-        <div id="analytics-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px"></div>
+        <!-- Summary cards (4 columns) -->
+        <div id="analytics-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px"></div>
 
         <!-- Empty state -->
         <div id="analytics-empty" style="display:none;text-align:center;padding:60px 0;color:var(--text3)">
           <div style="font-size:40px;margin-bottom:12px">📋</div>
-          <div style="font-size:14px">尚無報價紀錄，請先儲存一筆報價</div>
+          <div style="font-size:14px">尚無報價紀錄，請先儲存一筆報價後再來查看</div>
         </div>
 
-        <!-- Charts row 1：顧問分析 + 校區分布 -->
-        <div id="analytics-row1" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <!-- Row 1：按月趨勢 | 校區排行 | 顧問績效（三欄） -->
+        <div id="analytics-row1" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
           <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">👥 顧問報價分析</div>
-            <canvas id="chart-advisor"></canvas>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">📅 按月報價趨勢</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px">長條＝筆數　折線＝總金額（萬）</div>
+            <div style="position:relative;height:220px"><canvas id="chart-monthly"></canvas></div>
           </div>
           <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">🌏 校區分布</div>
-            <canvas id="chart-campus"></canvas>
-          </div>
-        </div>
-
-        <!-- Charts row 2：按月趨勢 + 週數分布 -->
-        <div id="analytics-row2" style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
-          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">📅 按月報價趨勢</div>
-            <canvas id="chart-monthly"></canvas>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">🌏 校區排行榜</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px">報價筆數排行（含佔比）</div>
+            <div style="position:relative;height:220px"><canvas id="chart-campus"></canvas></div>
           </div>
           <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">⏱ 週數分布</div>
-            <canvas id="chart-weeks"></canvas>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">👥 顧問績效</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px">報價筆數 ＋ 平均淨利率</div>
+            <div style="position:relative;height:140px"><canvas id="chart-advisor"></canvas></div>
+            <div id="advisor-detail" style="margin-top:10px;border-top:1px solid #f5f5f8;padding-top:6px"></div>
           </div>
         </div>
 
-        <!-- Charts row 3：住宿偏好 + 折扣使用率 -->
-        <div id="analytics-row3" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+        <!-- Row 2：週數分布 | 住宿偏好 | 折扣分析（三欄） -->
+        <div id="analytics-row2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
           <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">🏠 住宿偏好</div>
-            <canvas id="chart-accomm"></canvas>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">⏱ 週數分布</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px">各週數區間報價筆數</div>
+            <div style="position:relative;height:180px"><canvas id="chart-weeks"></canvas></div>
           </div>
           <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">🏷 折扣使用率</div>
-            <canvas id="chart-discount"></canvas>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">🏠 住宿偏好</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Top 6 住宿類型選擇次數</div>
+            <div style="position:relative;height:180px"><canvas id="chart-accomm"></canvas></div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">🏷 折扣分析</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px">有折扣 vs 原價</div>
+            <div style="position:relative;height:140px"><canvas id="chart-discount"></canvas></div>
+            <div id="discount-detail" style="margin-top:10px;border-top:1px solid #f5f5f8;padding-top:6px"></div>
+          </div>
+        </div>
+
+        <!-- Row 3：最近 10 筆明細表 -->
+        <div id="analytics-row3" style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:28px">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px">📋 最近 10 筆報價明細</div>
+          <div style="overflow-x:auto">
+            <table id="analytics-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
           </div>
         </div>
 
