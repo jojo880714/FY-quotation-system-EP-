@@ -2668,121 +2668,224 @@ let _charts = {}; // Chart.js 實例管理（重繪前先 destroy 避免記憶�
 function renderAnalytics(){
   if(!_isAdminMode){ showPage('wizard'); return; }
 
-  const data = JSON.parse(localStorage.getItem('fy_history')||'[]');
+  const raw  = JSON.parse(localStorage.getItem('fy_history')||'[]');
+  const data = [...raw].sort((a,b)=>(b.id||0)-(a.id||0)); // 最新在前
   const totalCount = data.length;
 
-  // ── 總覽卡片 ──
-  const totalAmt   = data.reduce((s,q)=>s+(q.rawFinalTWD||q.finalTWD||0),0);
-  const avgWeeks   = totalCount ? (data.reduce((s,q)=>s+(q.weeks||0),0)/totalCount).toFixed(1) : '–';
-  const marginArr  = data.filter(q=>q.netMargin>0).map(q=>q.netMargin);
-  const avgMargin  = marginArr.length ? (marginArr.reduce((a,b)=>a+b,0)/marginArr.length*100).toFixed(1) : '–';
+  // ── 淨利率正規化（自動偵測 decimal vs percentage 格式）──
+  function toMarginPct(nm){
+    if(nm==null||isNaN(nm)) return null;
+    const n=Number(nm);
+    if(n<=0) return null;
+    return n>2 ? n : n*100; // >2 = 已是百分比 (e.g.33.9)，≤2 = 小數 (e.g.0.339)
+  }
 
-  document.getElementById('analytics-cards').innerHTML = `
+  // ── 總覽卡片數據 ──
+  const totalAmt   = data.reduce((s,q)=>s+(Number(q.rawFinalTWD)||Number(q.finalTWD)||0),0);
+  const avgWeeks   = totalCount?(data.reduce((s,q)=>s+(Number(q.weeks)||0),0)/totalCount).toFixed(1):'–';
+  const margins    = data.map(q=>toMarginPct(q.netMargin)).filter(v=>v!==null);
+  const avgMargin  = margins.length?(margins.reduce((a,b)=>a+b,0)/margins.length).toFixed(1):'–';
+  const maxAmt     = data.reduce((m,q)=>Math.max(m,Number(q.rawFinalTWD)||Number(q.finalTWD)||0),0);
+  const maxWeeks   = data.reduce((m,q)=>Math.max(m,Number(q.weeks)||0),0);
+  const maxMargin  = margins.length?Math.max(...margins).toFixed(1):'–';
+  const now        = new Date();
+  const thisMonth  = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const thisMoCnt  = data.filter(q=>{
+    if(!q.date) return false;
+    const p=String(q.date).replace(/\//g,'-').split('-');
+    return p[0]+'-'+String(p[1]).padStart(2,'0')===thisMonth;
+  }).length;
+
+  document.getElementById('analytics-cards').innerHTML=`
     <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">總報價筆數</div>
-      <div style="font-size:30px;font-weight:700;color:var(--pink)">${totalCount}</div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">總報價筆數</div>
+      <div style="font-size:32px;font-weight:700;color:var(--pink);line-height:1">${totalCount}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">本月新增 <strong>${thisMoCnt}</strong> 筆</div>
     </div>
     <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">總報價金額</div>
-      <div style="font-size:22px;font-weight:700;color:var(--text)">NT$ ${Math.round(totalAmt).toLocaleString()}</div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">總報價金額</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text);line-height:1.2">NT$ ${Math.round(totalAmt).toLocaleString()}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">最高單筆 NT$ ${Math.round(maxAmt).toLocaleString()}</div>
     </div>
     <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">平均週數</div>
-      <div style="font-size:30px;font-weight:700;color:#6366f1">${avgWeeks} <span style="font-size:16px;font-weight:400">W</span></div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">平均週數</div>
+      <div style="font-size:32px;font-weight:700;color:#6366f1;line-height:1">${avgWeeks}<span style="font-size:16px;font-weight:400"> W</span></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">最長 <strong>${maxWeeks}</strong> 週</div>
     </div>
     <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">平均淨利率</div>
-      <div style="font-size:30px;font-weight:700;color:#059669">${avgMargin}<span style="font-size:16px;font-weight:400">%</span></div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">平均淨利率</div>
+      <div style="font-size:32px;font-weight:700;color:#059669;line-height:1">${avgMargin}<span style="font-size:16px;font-weight:400"> %</span></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">最高 <strong>${maxMargin}</strong>%</div>
     </div>`;
 
-  const sub = document.getElementById('analytics-subtitle');
-  if(sub) sub.textContent = `共 ${totalCount} 筆報價紀錄`;
+  const subEl=document.getElementById('analytics-subtitle');
+  if(subEl) subEl.textContent=`共 ${totalCount} 筆報價紀錄　最後更新：${now.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
 
-  const emptyEl = document.getElementById('analytics-empty');
-  const rows = ['analytics-row1','analytics-row2','analytics-row3'];
-
-  if(totalCount === 0){
+  const emptyEl=document.getElementById('analytics-empty');
+  const rows=['analytics-row1','analytics-row2','analytics-row3'];
+  if(totalCount===0){
     if(emptyEl) emptyEl.style.display='block';
-    rows.forEach(r=>{ const el=document.getElementById(r); if(el) el.style.display='none'; });
+    rows.forEach(r=>{const el=document.getElementById(r);if(el)el.style.display='none';});
     return;
   }
   if(emptyEl) emptyEl.style.display='none';
-  rows.forEach(r=>{ const el=document.getElementById(r); if(el) el.style.display=''; });
+  rows.forEach(r=>{const el=document.getElementById(r);if(el)el.style.display='';});
 
-  // ── 色盤 ──
   const PINK='#e91e8c';
   const PAL=['#e91e8c','#6366f1','#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#f97316','#14b8a6','#ec4899'];
+  const BASE={responsive:true,maintainAspectRatio:false};
+  function dc(id){if(_charts[id]){_charts[id].destroy();delete _charts[id];}}
 
-  function d(id){ if(_charts[id]){ _charts[id].destroy(); delete _charts[id]; } }
-  function mkChart(id,type,labels,datasets,opts){
-    d(id);
-    const ctx=document.getElementById(id);
-    if(!ctx) return;
-    _charts[id]=new Chart(ctx,{type,data:{labels,datasets},options:{responsive:true,plugins:{legend:{display:false},...(opts?.legend||{})},scales:{...opts?.scales},...opts?.extra}});
-  }
-
-  // 1. 顧問報價分析（橫向長條）
+  // ── 1. 按月趨勢（長條 + 折線 雙軸）──
   {
-    const m={};
-    data.forEach(q=>{ const n=q.advisorName||'未知'; m[n]=(m[n]||0)+1; });
-    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]);
-    mkChart('chart-advisor','bar',s.map(([n])=>n),
-      [{label:'報價筆數',data:s.map(([,v])=>v),backgroundColor:PINK,borderRadius:6}],
-      {scales:{x:{ticks:{stepSize:1}},y:{ticks:{font:{size:11}}}},extra:{indexAxis:'y'},legend:{legend:{display:false}}});
-  }
-
-  // 2. 校區分布（Doughnut）
-  {
-    const m={};
-    data.forEach(q=>{ const c=q.campus||'未知'; m[c]=(m[c]||0)+1; });
-    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    d('chart-campus');
-    const ctx=document.getElementById('chart-campus');
-    if(ctx) _charts['chart-campus']=new Chart(ctx,{type:'doughnut',data:{labels:s.map(([n])=>n),datasets:[{data:s.map(([,v])=>v),backgroundColor:PAL}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
-  }
-
-  // 3. 按月趨勢（長條）
-  {
-    const m={};
+    const mCount={},mAmt={};
     data.forEach(q=>{
       if(!q.date) return;
       const p=String(q.date).replace(/\//g,'-').split('-');
       if(p.length<2) return;
       const k=p[0]+'-'+String(p[1]).padStart(2,'0');
-      m[k]=(m[k]||0)+1;
+      mCount[k]=(mCount[k]||0)+1;
+      mAmt[k]=(mAmt[k]||0)+(Number(q.rawFinalTWD)||Number(q.finalTWD)||0);
     });
-    const s=Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0]));
-    mkChart('chart-monthly','bar',s.map(([k])=>k),
-      [{label:'報價筆數',data:s.map(([,v])=>v),backgroundColor:'#6366f1',borderRadius:6}],
-      {scales:{y:{ticks:{stepSize:1}}}});
+    const keys=Object.keys(mCount).sort();
+    dc('chart-monthly');
+    const ctx=document.getElementById('chart-monthly');
+    if(ctx) _charts['chart-monthly']=new Chart(ctx,{
+      type:'bar',
+      data:{labels:keys,datasets:[
+        {type:'bar',label:'報價筆數',data:keys.map(k=>mCount[k]),backgroundColor:'#6366f1',borderRadius:5,yAxisID:'y'},
+        {type:'line',label:'金額(萬)',data:keys.map(k=>+(mAmt[k]/10000).toFixed(1)),borderColor:PINK,backgroundColor:'rgba(233,30,140,.08)',borderWidth:2,pointBackgroundColor:PINK,tension:.3,yAxisID:'y1'}
+      ]},
+      options:{...BASE,plugins:{legend:{display:true,labels:{font:{size:10},boxWidth:10,padding:8}},tooltip:{mode:'index'}},
+        scales:{y:{position:'left',ticks:{stepSize:1,font:{size:10}},title:{display:true,text:'筆',font:{size:9}}},
+                y1:{position:'right',ticks:{font:{size:10}},title:{display:true,text:'萬',font:{size:9}},grid:{drawOnChartArea:false}}}}
+    });
   }
 
-  // 4. 週數分布（Pie）
-  {
-    const rng={'1–4 週':0,'5–8 週':0,'9–12 週':0,'13 週以上':0};
-    data.forEach(q=>{ const w=q.weeks||0; if(w<=4)rng['1–4 週']++; else if(w<=8)rng['5–8 週']++; else if(w<=12)rng['9–12 週']++; else rng['13 週以上']++; });
-    d('chart-weeks');
-    const ctx=document.getElementById('chart-weeks');
-    if(ctx) _charts['chart-weeks']=new Chart(ctx,{type:'pie',data:{labels:Object.keys(rng),datasets:[{data:Object.values(rng),backgroundColor:[PINK,'#6366f1','#f59e0b','#10b981']}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
-  }
-
-  // 5. 住宿偏好（橫向長條）
+  // ── 2. 校區排行（橫向長條 + 百分比標籤）──
   {
     const m={};
-    data.forEach(q=>{ const a=q.accomm||(q._state?.accomm==='none'?'不住宿':'不住宿'); const k=String(a).length>22?String(a).slice(0,22)+'…':String(a); m[k]=(m[k]||0)+1; });
-    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,6);
-    mkChart('chart-accomm','bar',s.map(([n])=>n),
-      [{label:'次數',data:s.map(([,v])=>v),backgroundColor:'#f59e0b',borderRadius:6}],
-      {scales:{x:{ticks:{stepSize:1}},y:{ticks:{font:{size:10}}}},extra:{indexAxis:'y'}});
+    data.forEach(q=>{const c=q.campus||'未知';m[c]=(m[c]||0)+1;});
+    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const labels=s.map(([n,v])=>`${n}  ${((v/totalCount)*100).toFixed(0)}%`);
+    dc('chart-campus');
+    const ctx=document.getElementById('chart-campus');
+    if(ctx) _charts['chart-campus']=new Chart(ctx,{
+      type:'bar',
+      data:{labels,datasets:[{label:'筆數',data:s.map(([,v])=>v),backgroundColor:PINK,borderRadius:5}]},
+      options:{...BASE,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{stepSize:1,font:{size:10}}},y:{ticks:{font:{size:10}}}}}
+    });
   }
 
-  // 6. 折扣使用率（Doughnut）
+  // ── 3. 顧問績效（橫向長條 + 淨利率明細）──
   {
-    const m={'未套用折扣':0,'有套用折扣':0};
-    data.forEach(q=>{ if(q.discountAmt&&q.discountAmt>0) m['有套用折扣']++; else m['未套用折扣']++; });
-    d('chart-discount');
+    const aMap={};
+    data.forEach(q=>{
+      const n=q.advisorName||'未知';
+      if(!aMap[n]) aMap[n]={count:0,margins:[]};
+      aMap[n].count++;
+      const mp=toMarginPct(q.netMargin);
+      if(mp!==null) aMap[n].margins.push(mp);
+    });
+    const s=Object.entries(aMap).sort((a,b)=>b[1].count-a[1].count);
+    dc('chart-advisor');
+    const ctx=document.getElementById('chart-advisor');
+    if(ctx) _charts['chart-advisor']=new Chart(ctx,{
+      type:'bar',
+      data:{labels:s.map(([n])=>n),datasets:[{label:'筆數',data:s.map(([,d])=>d.count),backgroundColor:PAL,borderRadius:5}]},
+      options:{...BASE,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{stepSize:1,font:{size:10}}},y:{ticks:{font:{size:11}}}}}
+    });
+    const detEl=document.getElementById('advisor-detail');
+    if(detEl) detEl.innerHTML=s.map(([n,d])=>{
+      const avg=d.margins.length?(d.margins.reduce((a,b)=>a+b,0)/d.margins.length).toFixed(1):'–';
+      return`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f5f5f8;font-size:11px">
+        <span style="color:var(--text);font-weight:500">${n}</span>
+        <span style="color:var(--text3)">${d.count} 筆</span>
+        <span style="color:#059669;font-weight:600">淨利 ${avg}%</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── 4. 週數分布（Doughnut + 筆數標籤）──
+  {
+    const rng={'1–4 週':0,'5–8 週':0,'9–12 週':0,'13 週以上':0};
+    data.forEach(q=>{const w=Number(q.weeks)||0;if(w<=4)rng['1–4 週']++;else if(w<=8)rng['5–8 週']++;else if(w<=12)rng['9–12 週']++;else rng['13 週以上']++;});
+    const labels=Object.keys(rng).map(k=>`${k} (${rng[k]}筆)`);
+    dc('chart-weeks');
+    const ctx=document.getElementById('chart-weeks');
+    if(ctx) _charts['chart-weeks']=new Chart(ctx,{
+      type:'doughnut',
+      data:{labels,datasets:[{data:Object.values(rng),backgroundColor:[PINK,'#6366f1','#f59e0b','#10b981']}]},
+      options:{...BASE,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:6}}}}
+    });
+  }
+
+  // ── 5. 住宿偏好（橫向長條 Top6）──
+  {
+    const m={};
+    data.forEach(q=>{
+      const raw=q.accomm||(q._state?.accomm==='none'?null:q._state?.accomm?.name)||null;
+      const a=raw?(String(raw).length>20?String(raw).slice(0,20)+'…':String(raw)):'不住宿';
+      m[a]=(m[a]||0)+1;
+    });
+    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    dc('chart-accomm');
+    const ctx=document.getElementById('chart-accomm');
+    if(ctx) _charts['chart-accomm']=new Chart(ctx,{
+      type:'bar',
+      data:{labels:s.map(([n])=>n),datasets:[{label:'次數',data:s.map(([,v])=>v),backgroundColor:'#f59e0b',borderRadius:5}]},
+      options:{...BASE,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{ticks:{stepSize:1,font:{size:10}}},y:{ticks:{font:{size:10}}}}}
+    });
+  }
+
+  // ── 6. 折扣分析（Doughnut + 平均折扣金額）──
+  {
+    const wDisc=data.filter(q=>q.discountAmt&&Number(q.discountAmt)>0);
+    const noDisc=data.length-wDisc.length;
+    const avgDisc=wDisc.length?Math.round(wDisc.reduce((s,q)=>s+Number(q.discountAmt),0)/wDisc.length):0;
+    dc('chart-discount');
     const ctx=document.getElementById('chart-discount');
-    if(ctx) _charts['chart-discount']=new Chart(ctx,{type:'doughnut',data:{labels:Object.keys(m),datasets:[{data:Object.values(m),backgroundColor:['#e5e7eb',PINK]}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
+    if(ctx) _charts['chart-discount']=new Chart(ctx,{
+      type:'doughnut',
+      data:{labels:[`原價 (${noDisc}筆)`,`有折扣 (${wDisc.length}筆)`],datasets:[{data:[noDisc,wDisc.length],backgroundColor:['#e5e7eb',PINK]}]},
+      options:{...BASE,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:6}}}}
+    });
+    const detEl=document.getElementById('discount-detail');
+    if(detEl) detEl.innerHTML=wDisc.length>0
+      ?`<div style="text-align:center;font-size:11px;color:var(--text2)">有折扣報價平均折扣 <strong style="color:var(--pink)">NT$ ${avgDisc.toLocaleString()}</strong></div>`
+      :`<div style="text-align:center;font-size:11px;color:var(--text3)">目前無套用折扣的報價</div>`;
+  }
+
+  // ── 7. 最近 10 筆明細表 ──
+  {
+    const recent=data.slice(0,10);
+    const sLabel={draft:'草稿',ordered:'已開單',expired:'已過期'};
+    const sColor={draft:'#6b7280',ordered:'#059669',expired:'#dc2626'};
+    const rows=recent.map(q=>{
+      const mp=toMarginPct(q.netMargin);
+      const mStr=mp!==null?`${mp.toFixed(1)}%`:'–';
+      const mColor=mp!==null?(mp>=20?'#059669':mp>=10?'#f59e0b':'#dc2626'):'#9ca3af';
+      const st=q.status||'draft';
+      return`<tr style="border-top:1px solid #f5f5f8">
+        <td style="padding:9px 6px;color:var(--text3);white-space:nowrap">${q.date||'–'}</td>
+        <td style="padding:9px 6px;font-weight:500">${q.advisorName||'–'}</td>
+        <td style="padding:9px 6px">${q.campus||'–'}</td>
+        <td style="padding:9px 6px;text-align:center">${q.weeks||'–'} W</td>
+        <td style="padding:9px 6px;text-align:right;font-weight:500">NT$ ${Math.round(Number(q.rawFinalTWD)||Number(q.finalTWD)||0).toLocaleString()}</td>
+        <td style="padding:9px 6px;text-align:center;color:${mColor};font-weight:600">${mStr}</td>
+        <td style="padding:9px 6px;text-align:center"><span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${sColor[st]}22;color:${sColor[st]};font-weight:500">${sLabel[st]||st}</span></td>
+      </tr>`;
+    }).join('');
+    const tbl=document.getElementById('analytics-table');
+    if(tbl) tbl.innerHTML=`<thead><tr style="border-bottom:2px solid #f0f0f5">
+      <th style="padding:6px 6px;text-align:left;font-size:11px;font-weight:600;color:var(--text3)">日期</th>
+      <th style="padding:6px 6px;text-align:left;font-size:11px;font-weight:600;color:var(--text3)">顧問</th>
+      <th style="padding:6px 6px;text-align:left;font-size:11px;font-weight:600;color:var(--text3)">校區</th>
+      <th style="padding:6px 6px;text-align:center;font-size:11px;font-weight:600;color:var(--text3)">週數</th>
+      <th style="padding:6px 6px;text-align:right;font-size:11px;font-weight:600;color:var(--text3)">含稅總價</th>
+      <th style="padding:6px 6px;text-align:center;font-size:11px;font-weight:600;color:var(--text3)">淨利率</th>
+      <th style="padding:6px 6px;text-align:center;font-size:11px;font-weight:600;color:var(--text3)">狀態</th>
+    </tr></thead><tbody>${rows}</tbody>`;
   }
 }
 
