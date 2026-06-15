@@ -1,4 +1,21 @@
 // ============================================================
+// 修改說明 (2026-06-15) — GAS 後端整合 + SSO 身分驗證 + 檔名格式修正
+// 修改函式/區塊：
+//   1. GAS_BACKEND_URL 常數（新增）— 取代 DRIVE_FOLDER_INTERNAL / DRIVE_FOLDER_STUDENT
+//      原因：Drive 上傳改由 GAS Web App 處理，前端不再持有 OAuth token
+//   2. uploadToDrive(blob, filename, folderType) — 完整重寫
+//      原因：舊版用 window._driveToken（永遠是 null，上傳完全無效）
+//            改為 Blob → base64 → POST 到 GAS 後端由 GAS 用服務帳號傳 Drive
+//   3. makePngFilename(q, type) — 格式修正
+//      原因：舊格式「顧問-學生-校區-日期-v版本_type.png」與架構圖不符
+//            新格式：「日期_顧問_廠商_城市_週數_學生_版本_type.png」
+//            例：20260615_Aaron_EP_Brisbane_8W_王小明_v1_internal.png
+//   4. generateAndUploadPNGs(q) — 移除舊 window._driveToken 判斷，改用 GAS_BACKEND_URL 判斷
+//   5. initSSOUser()（新增）— 讀取 URL ?t=JWT_TOKEN，呼叫 GAS 驗證後設定 currentUser
+//      原因：CMS SSO 完成後顧問透過 CMS 跳轉帶 token，報價系統自動認得誰在使用
+//      備援：若無 token（本機測試/CMS 尚未串接），沿用現有 user picker / PIN 機制
+//   6. DOMContentLoaded — 加入 initSSOUser() 呼叫
+// ============================================================
 // 修改說明 (2026-05-21) — EP Only 版本
 // 修改函式/區塊：
 //   1. SCHOOL_DATA  — 只保留 "EP"，刪除 ILSC 和 Kaplan 整個物件
@@ -262,107 +279,87 @@ function getTier(tiers,w){for(const t of tiers)if(w>=(t.wf||1)&&w<=(t.wt||99))re
 
 
 
-// ── Phase 4：Google Drive 上傳 ──
-const DRIVE_FOLDER_INTERNAL = '1Kh4_bOPT_mF9vwp3CuOJZqId5k_FLGvs';
-const DRIVE_FOLDER_STUDENT  = '1uWT88IMggk6lUXKlZyK2Y-xZ9Iigxxsf';
+// ── Phase 4：Google Drive 上傳（透過 GAS 後端）──
+// 部署 Code.gs 後填入 GAS Web App URL（格式：https://script.google.com/macros/s/…/exec）
+// 未填時 Drive 上傳靜默跳過，其他功能不受影響
+const GAS_BACKEND_URL = 'https://script.google.com/macros/s/AKfycbyY9ZXqr8iz0SrxlqHKiCBpElzZfOAyv_qvfCJJ6S9W4L2EqOmJZnEJ10togV9-0DD7/exec';
 
-async function uploadToDrive(blob, filename, folderId){
-  // 使用 Google Drive API v3 multipart upload
-  // 需要 OAuth token（由 gapi 或 Google Identity Services 提供）
-  const token = window._driveToken;
-  if(!token){ console.warn('Drive token 未設定，跳過上傳'); return {ok:false, reason:'no_token'}; }
-
-  const meta = JSON.stringify({ name: filename, parents: [folderId] });
-  const boundary = 'fy_upload_boundary';
-  const body = [
-    '--' + boundary,
-    'Content-Type: application/json; charset=UTF-8',
-    '',
-    meta,
-    '--' + boundary,
-    'Content-Type: image/png',
-    '',
-  ].join('\r\n');
-
-  const bodyBlob = new Blob(
-    [ body + '\r\n', blob, '\r\n--' + boundary + '--' ],
-    { type: 'multipart/related; boundary=' + boundary }
-  );
-
-  try {
-    const res = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'multipart/related; boundary=' + boundary,
-        },
-        body: bodyBlob,
-      }
-    );
-    const data = await res.json();
-    if(data.id){ return {ok:true, fileId:data.id}; }
-    else { console.error('Drive upload error', data); return {ok:false, reason: data.error?.message||'unknown'}; }
-  } catch(e){
-    console.error('Drive upload exception', e);
-    return {ok:false, reason: e.message};
+async function uploadToDrive(blob, filename, folderType){
+  // folderType: 'internal' | 'student'
+  // GAS 後端持有 Drive folder ID，前端不再持有 token
+  if(!GAS_BACKEND_URL){
+    console.warn('[Drive] GAS_BACKEND_URL 未設定，跳過上傳');
+    return {ok:false, reason:'no_backend_url'};
   }
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onload = async ()=>{
+      try{
+        const base64 = reader.result.split(',')[1];
+        const res = await fetch(GAS_BACKEND_URL, {
+          method:'POST',
+          // 不設 Content-Type header → 瀏覽器預設 text/plain → simple request → 無 CORS preflight
+          // GAS 仍可從 e.postData.contents 讀到完整 JSON 字串
+          body: JSON.stringify({ action:'uploadPNG', filename, folderType, base64Data: base64 })
+        });
+        const data = await res.json();
+        if(data.ok){ resolve({ok:true, fileId:data.fileId}); }
+        else{ console.error('[Drive] upload error:', data.error); resolve({ok:false, reason:data.error||'unknown'}); }
+      } catch(e){
+        console.error('[Drive] uploadToDrive exception', e);
+        resolve({ok:false, reason: e.message});
+      }
+    };
+    reader.onerror = ()=> resolve({ok:false, reason:'FileReader error'});
+    reader.readAsDataURL(blob);
+  });
 }
 
 function makePngFilename(q, type){
-  // 顧問名-學生名-校區-日期-v版本_type.png
+  // 格式：日期_顧問_廠商_城市_週數_學生_版本_type.png
+  // 例：20260615_Aaron_EP_Brisbane_8W_王小明_v1_internal.png
+  const date    = (q.date||new Date().toLocaleDateString('zh-TW')).replace(/[\/\-]/g,'');
   const advisor = (q.advisorName||'顧問').replace(/\s/g,'');
-  const student = (q.studentName||'未填').replace(/\s/g,'');
+  const school  = (q.school||'EP');
   const campus  = (q.campus||'').replace(/\s/g,'');
-  const dateStr = (q.date||new Date().toLocaleDateString('zh-TW')).replace(/\//g,'');
-  const version = q.version || 'v1';
-  return `${advisor}-${student}-${campus}-${dateStr}-${version}_${type}.png`;
+  const weeks   = (q.weeks||0)+'W';
+  const student = (q.studentName||'未填').replace(/\s/g,'');
+  const version = (q.version||'v1');
+  return `${date}_${advisor}_${school}_${campus}_${weeks}_${student}_${version}_${type}.png`;
 }
 
 async function generateAndUploadPNGs(q){
   const indicator = document.getElementById('sync-indicator');
-  const setStatus = (msg, color) => {
-    if(indicator){ indicator.textContent = msg; indicator.style.color = color||'#6b7280'; }
+  const setStatus = (msg, color)=>{
+    if(indicator){ indicator.textContent=msg; indicator.style.color=color||'#6b7280'; }
   };
 
-  setStatus('📤 上傳報價單...', '#f97316');
+  if(!GAS_BACKEND_URL){
+    // GAS 尚未設定：靜默跳過，顯示已同步（不嚇到顧問）
+    setStatus('☁️ 已同步', '#059669');
+    return;
+  }
 
-  let internalOk = false, studentOk = false;
+  setStatus('📤 上傳報價單...', '#f97316');
   const errors = [];
 
-  // 產生兩張 PNG
   for(const type of ['internal','student']){
     try{
       const blob = await exportPNGBlob(type);
-      if(!blob){ errors.push(type+':無法產生'); continue; }
+      if(!blob){ errors.push(type+':無法產生 PNG'); continue; }
       const filename = makePngFilename(q, type);
-      const folderId = type === 'internal' ? DRIVE_FOLDER_INTERNAL : DRIVE_FOLDER_STUDENT;
-      const result = await uploadToDrive(blob, filename, folderId);
-      if(result.ok){
-        if(type==='internal') internalOk = true;
-        else studentOk = true;
-      } else if(result.reason === 'no_token'){
-        // 沒有 token → 靜默跳過，不報錯（Phase 5 Login 完成後會有 token）
-        break;
-      } else {
-        errors.push(type+':'+result.reason);
-      }
+      const result = await uploadToDrive(blob, filename, type); // type = folderType
+      if(!result.ok) errors.push(type+':'+result.reason);
     } catch(e){
       errors.push(type+':'+e.message);
     }
   }
 
-  if(!window._driveToken){
-    setStatus('☁️ 已同步', '#059669');
-    return;
-  }
-
-  if(errors.length === 0){
+  if(errors.length===0){
     setStatus('☁️ 報價單已上傳 Drive', '#059669');
   } else {
     setStatus('⚠️ Drive 上傳部分失敗', '#dc2626');
-    console.error('Drive upload errors:', errors);
+    console.error('[Drive] errors:', errors);
   }
 }
 
@@ -2657,11 +2654,61 @@ function showTutorialPanel(){
   panel.style.display = 'block';
 }
 
+// ── SSO 身分初始化 ──
+// CMS（Supabase）登入後跳轉到：https://fy-quotation-system-ep.vercel.app/?t=JWT_TOKEN
+// 本函式讀取 URL 中的 ?t=... → 呼叫 GAS 後端驗證 JWT → 設定 currentUser
+// 備援：若無 token / GAS 未設定 → 沿用現有 user picker / PIN 機制（測試環境照常運作）
+async function initSSOUser(){
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('t');
+  if(!token || !GAS_BACKEND_URL) return;
+
+  try{
+    const res = await fetch(GAS_BACKEND_URL, {
+      method:'POST',
+      // 不設 Content-Type header → simple request → 無 CORS preflight
+      body: JSON.stringify({ action:'verifyToken', token })
+    });
+    const data = await res.json();
+    if(!data.ok){ console.warn('[SSO] token 驗證失敗:', data.error); return; }
+
+    const u = data.user;
+    // JWT payload 格式：{ sub:'tkb0003007', name:'馮若陽', role:'manager' }
+    const ssoRole = u.role==='manager' ? 'admin' : 'advisor';
+    currentUser = {
+      id:     u.sub,
+      name:   u.name,
+      role:   ssoRole,
+      avatar: (u.name||'？')[0]
+    };
+    if(ssoRole==='admin'){
+      _isAdminMode = true;
+      const ns = document.getElementById('nav-settings');
+      if(ns) ns.style.display='';
+    }
+    // 更新身分徽章
+    var _av=document.getElementById('user-avatar'); if(_av) _av.textContent=currentUser.avatar;
+    var _nm=document.getElementById('user-name-display'); if(_nm) _nm.textContent=currentUser.name;
+    setModeBadge(ssoRole==='admin');
+    renderQP();
+
+    // 安全：清掉 URL 的 token 參數（避免 token 留在瀏覽器歷史）
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, '', cleanUrl);
+
+    console.log('[SSO] 登入成功:', currentUser.name, '|', ssoRole);
+  } catch(e){
+    console.warn('[SSO] 初始化錯誤:', e.message);
+  }
+}
+
 // ── 統一初始化(DOMContentLoaded) ──
 document.addEventListener('DOMContentLoaded', function(){
   // 1. 匯率設定預設隱藏
   const ns = document.getElementById('nav-settings');
   if(ns) ns.style.display = 'none';
-  // 2. Tutorial 第一次自動啟動
+  // 2. SSO 身分初始化（CMS 帶 ?t=JWT 進來時自動設定顧問身分）
+  initSSOUser();
+  // 3. Tutorial 第一次自動啟動
   // （已移除自動彈出：教學改由左側「使用教學」按鈕點擊觸發 startTutorial(true)）
 });
