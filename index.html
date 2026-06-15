@@ -640,17 +640,17 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 
         <!-- Row 1：按月趨勢 | 校區排行 | 顧問績效（三欄） -->
         <div id="analytics-row1" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
-          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0;overflow:hidden">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">📅 按月報價趨勢</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px">長條＝筆數　折線＝總金額（萬）</div>
             <div style="position:relative;height:220px"><canvas id="chart-monthly"></canvas></div>
           </div>
-          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0;overflow:hidden">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">🌏 校區排行榜</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px">報價筆數排行（含佔比）</div>
             <div style="position:relative;height:220px"><canvas id="chart-campus"></canvas></div>
           </div>
-          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0;overflow:hidden">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">👥 顧問績效</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px">報價筆數 ＋ 平均淨利率</div>
             <div style="position:relative;height:140px"><canvas id="chart-advisor"></canvas></div>
@@ -660,17 +660,17 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 
         <!-- Row 2：週數分布 | 住宿偏好 | 折扣分析（三欄） -->
         <div id="analytics-row2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
-          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0;overflow:hidden">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">⏱ 週數分布</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px">各週數區間報價筆數</div>
             <div style="position:relative;height:180px"><canvas id="chart-weeks"></canvas></div>
           </div>
-          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0;overflow:hidden">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">🏠 住宿偏好</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Top 6 住宿類型選擇次數</div>
             <div style="position:relative;height:180px"><canvas id="chart-accomm"></canvas></div>
           </div>
-          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0;overflow:hidden">
             <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">🏷 折扣分析</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px">有折扣 vs 原價</div>
             <div style="position:relative;height:140px"><canvas id="chart-discount"></canvas></div>
