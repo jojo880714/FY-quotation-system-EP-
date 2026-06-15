@@ -437,6 +437,8 @@ function enterAdminMode(){
   currentUser = users.find(u=>u.role==='admin') || users[0];
   const ns = document.getElementById('nav-settings');
   if(ns) ns.style.display='';
+  const na = document.getElementById('nav-analytics');
+  if(na) na.style.display='';
   const badge = document.getElementById('admin-badge');
   if(badge) badge.style.display='inline-block';
   updateBadge();
@@ -449,11 +451,13 @@ function exitAdminMode(){
   currentUser = users.find(u=>u.role==='advisor') || users[1];
   const ns = document.getElementById('nav-settings');
   if(ns) ns.style.display='none';
+  const na = document.getElementById('nav-analytics');
+  if(na) na.style.display='none';
   const badge = document.getElementById('admin-badge');
   if(badge) badge.style.display='none';
   // 若在管理員頁面，跳回報價
   const ap = document.querySelector('.page.active');
-  if(ap && ap.id==='page-settings') showPage('wizard');
+  if(ap && (ap.id==='page-settings' || ap.id==='page-analytics')) showPage('wizard');
   updateBadge();
   setModeBadge(false);
   renderQP();
@@ -665,17 +669,21 @@ async function createAllAccounts(){
 // ── Navigation ──
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
+  const pg = document.getElementById('page-'+id);
+  if(pg) pg.classList.add('active');
+  // 用 id 找對應的 nav 按鈕，避免 index 偏移 bug
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  const idx={wizard:0,history:1,settings:2,data:3};
-  document.querySelectorAll('.nav-item')[idx[id]??0].classList.add('active');
-  const titles={wizard:'新增報價',history:'歷史報價紀錄',settings:'匯率設定',data:'費用資料管理'};
+  const navMap = {wizard:'[onclick*="showPage(\'wizard\')"]', history:'[onclick*="showPage(\'history\')"]', settings:'#nav-settings', analytics:'#nav-analytics', data:'[onclick*="showPage(\'data\')"]'};
+  const sel = navMap[id];
+  if(sel){ const nb=document.querySelector(sel); if(nb) nb.classList.add('active'); }
+  const titles={wizard:'新增報價',history:'歷史報價紀錄',settings:'匯率設定',data:'費用資料管理',analytics:'數據分析'};
   document.getElementById('topbar-title').textContent=titles[id]||'';
   document.getElementById('topbar-sub').textContent='';
   if(id==='settings')renderSettings();
   if(id==='data')renderDataPage();
   if(id==='history')renderHistory();
   if(id==='wizard')renderWizard();
+  if(id==='analytics')renderAnalytics();
   updateBadge();
 }
 
@@ -2654,6 +2662,130 @@ function showTutorialPanel(){
   panel.style.display = 'block';
 }
 
+// ── 數據分析 ──
+let _charts = {}; // Chart.js 實例管理（重繪前先 destroy 避免記憶體洩漏）
+
+function renderAnalytics(){
+  if(!_isAdminMode){ showPage('wizard'); return; }
+
+  const data = JSON.parse(localStorage.getItem('fy_history')||'[]');
+  const totalCount = data.length;
+
+  // ── 總覽卡片 ──
+  const totalAmt   = data.reduce((s,q)=>s+(q.rawFinalTWD||q.finalTWD||0),0);
+  const avgWeeks   = totalCount ? (data.reduce((s,q)=>s+(q.weeks||0),0)/totalCount).toFixed(1) : '–';
+  const marginArr  = data.filter(q=>q.netMargin>0).map(q=>q.netMargin);
+  const avgMargin  = marginArr.length ? (marginArr.reduce((a,b)=>a+b,0)/marginArr.length*100).toFixed(1) : '–';
+
+  document.getElementById('analytics-cards').innerHTML = `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">總報價筆數</div>
+      <div style="font-size:30px;font-weight:700;color:var(--pink)">${totalCount}</div>
+    </div>
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">總報價金額</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text)">NT$ ${Math.round(totalAmt).toLocaleString()}</div>
+    </div>
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">平均週數</div>
+      <div style="font-size:30px;font-weight:700;color:#6366f1">${avgWeeks} <span style="font-size:16px;font-weight:400">W</span></div>
+    </div>
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">平均淨利率</div>
+      <div style="font-size:30px;font-weight:700;color:#059669">${avgMargin}<span style="font-size:16px;font-weight:400">%</span></div>
+    </div>`;
+
+  const sub = document.getElementById('analytics-subtitle');
+  if(sub) sub.textContent = `共 ${totalCount} 筆報價紀錄`;
+
+  const emptyEl = document.getElementById('analytics-empty');
+  const rows = ['analytics-row1','analytics-row2','analytics-row3'];
+
+  if(totalCount === 0){
+    if(emptyEl) emptyEl.style.display='block';
+    rows.forEach(r=>{ const el=document.getElementById(r); if(el) el.style.display='none'; });
+    return;
+  }
+  if(emptyEl) emptyEl.style.display='none';
+  rows.forEach(r=>{ const el=document.getElementById(r); if(el) el.style.display=''; });
+
+  // ── 色盤 ──
+  const PINK='#e91e8c';
+  const PAL=['#e91e8c','#6366f1','#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#f97316','#14b8a6','#ec4899'];
+
+  function d(id){ if(_charts[id]){ _charts[id].destroy(); delete _charts[id]; } }
+  function mkChart(id,type,labels,datasets,opts){
+    d(id);
+    const ctx=document.getElementById(id);
+    if(!ctx) return;
+    _charts[id]=new Chart(ctx,{type,data:{labels,datasets},options:{responsive:true,plugins:{legend:{display:false},...(opts?.legend||{})},scales:{...opts?.scales},...opts?.extra}});
+  }
+
+  // 1. 顧問報價分析（橫向長條）
+  {
+    const m={};
+    data.forEach(q=>{ const n=q.advisorName||'未知'; m[n]=(m[n]||0)+1; });
+    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+    mkChart('chart-advisor','bar',s.map(([n])=>n),
+      [{label:'報價筆數',data:s.map(([,v])=>v),backgroundColor:PINK,borderRadius:6}],
+      {scales:{x:{ticks:{stepSize:1}},y:{ticks:{font:{size:11}}}},extra:{indexAxis:'y'},legend:{legend:{display:false}}});
+  }
+
+  // 2. 校區分布（Doughnut）
+  {
+    const m={};
+    data.forEach(q=>{ const c=q.campus||'未知'; m[c]=(m[c]||0)+1; });
+    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    d('chart-campus');
+    const ctx=document.getElementById('chart-campus');
+    if(ctx) _charts['chart-campus']=new Chart(ctx,{type:'doughnut',data:{labels:s.map(([n])=>n),datasets:[{data:s.map(([,v])=>v),backgroundColor:PAL}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
+  }
+
+  // 3. 按月趨勢（長條）
+  {
+    const m={};
+    data.forEach(q=>{
+      if(!q.date) return;
+      const p=String(q.date).replace(/\//g,'-').split('-');
+      if(p.length<2) return;
+      const k=p[0]+'-'+String(p[1]).padStart(2,'0');
+      m[k]=(m[k]||0)+1;
+    });
+    const s=Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0]));
+    mkChart('chart-monthly','bar',s.map(([k])=>k),
+      [{label:'報價筆數',data:s.map(([,v])=>v),backgroundColor:'#6366f1',borderRadius:6}],
+      {scales:{y:{ticks:{stepSize:1}}}});
+  }
+
+  // 4. 週數分布（Pie）
+  {
+    const rng={'1–4 週':0,'5–8 週':0,'9–12 週':0,'13 週以上':0};
+    data.forEach(q=>{ const w=q.weeks||0; if(w<=4)rng['1–4 週']++; else if(w<=8)rng['5–8 週']++; else if(w<=12)rng['9–12 週']++; else rng['13 週以上']++; });
+    d('chart-weeks');
+    const ctx=document.getElementById('chart-weeks');
+    if(ctx) _charts['chart-weeks']=new Chart(ctx,{type:'pie',data:{labels:Object.keys(rng),datasets:[{data:Object.values(rng),backgroundColor:[PINK,'#6366f1','#f59e0b','#10b981']}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
+  }
+
+  // 5. 住宿偏好（橫向長條）
+  {
+    const m={};
+    data.forEach(q=>{ const a=q.accomm||(q._state?.accomm==='none'?'不住宿':'不住宿'); const k=String(a).length>22?String(a).slice(0,22)+'…':String(a); m[k]=(m[k]||0)+1; });
+    const s=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    mkChart('chart-accomm','bar',s.map(([n])=>n),
+      [{label:'次數',data:s.map(([,v])=>v),backgroundColor:'#f59e0b',borderRadius:6}],
+      {scales:{x:{ticks:{stepSize:1}},y:{ticks:{font:{size:10}}}},extra:{indexAxis:'y'}});
+  }
+
+  // 6. 折扣使用率（Doughnut）
+  {
+    const m={'未套用折扣':0,'有套用折扣':0};
+    data.forEach(q=>{ if(q.discountAmt&&q.discountAmt>0) m['有套用折扣']++; else m['未套用折扣']++; });
+    d('chart-discount');
+    const ctx=document.getElementById('chart-discount');
+    if(ctx) _charts['chart-discount']=new Chart(ctx,{type:'doughnut',data:{labels:Object.keys(m),datasets:[{data:Object.values(m),backgroundColor:['#e5e7eb',PINK]}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12,padding:8}}}}});
+  }
+}
+
 // ── SSO 身分初始化 ──
 // CMS（Supabase）登入後跳轉到：https://fy-quotation-system-ep.vercel.app/?t=JWT_TOKEN
 // 本函式讀取 URL 中的 ?t=... → 呼叫 GAS 後端驗證 JWT → 設定 currentUser
@@ -2704,9 +2836,11 @@ async function initSSOUser(){
 
 // ── 統一初始化(DOMContentLoaded) ──
 document.addEventListener('DOMContentLoaded', function(){
-  // 1. 匯率設定預設隱藏
+  // 1. 匯率設定 + 數據分析 預設隱藏（管理員 PIN 後才顯示）
   const ns = document.getElementById('nav-settings');
   if(ns) ns.style.display = 'none';
+  const na = document.getElementById('nav-analytics');
+  if(na) na.style.display = 'none';
   // 2. SSO 身分初始化（CMS 帶 ?t=JWT 進來時自動設定顧問身分）
   initSSOUser();
   // 3. Tutorial 第一次自動啟動
