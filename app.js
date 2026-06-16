@@ -2729,7 +2729,7 @@ function renderAnalytics(){
     return;
   }
   if(emptyEl) emptyEl.style.display='none';
-  rows.forEach(r=>{const el=document.getElementById(r);if(el)el.style.display='';});
+  rows.forEach(r=>{const el=document.getElementById(r);if(el)el.style.display= r==='analytics-row3'?'block':'grid';});
 
   const PINK='#e91e8c';
   const PAL=['#e91e8c','#6366f1','#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#f97316','#14b8a6','#ec4899'];
